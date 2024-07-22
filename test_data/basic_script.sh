@@ -1,5 +1,5 @@
 #!/bin/bash
-#MBATCH -c 4
+#MBATCH -c 1
 #MBATCH -t 0-06:00
 #MBATCH -m 1G
 #MBATCH --account=test_account
@@ -7,7 +7,7 @@
 #MBATCH -e logs/basic_script_%j.err
 
 
-for i in $(seq 1 100); do
+for i in $(seq 1 10); do
   sleep 1
   echo $i
 done

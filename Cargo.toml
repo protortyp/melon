@@ -14,6 +14,10 @@ sysinfo = "0.30.13"
 nanoid = "0.4.0"
 libc = "0.2.155"
 whoami = "1.5.1"
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
+tracing-bunyan-formatter = "0.3"
+tracing-log = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 cgroups-rs = "0.3.4"

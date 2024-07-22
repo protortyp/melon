@@ -1,6 +1,6 @@
 use melon::proto::melon_scheduler_server::MelonScheduler;
 use melon::proto::melon_worker_client::MelonWorkerClient;
-use melon::{proto, JobResult, JobStatus, RequestedResources};
+use melon::{log, proto, JobResult, JobStatus, RequestedResources};
 use melon::{Job, Node, NodeStatus};
 use nanoid::nanoid;
 use std::time::Duration;
@@ -42,6 +42,7 @@ pub struct Scheduler {
 }
 
 impl Drop for Scheduler {
+    #[tracing::instrument(level = "debug", name = "Shut down scheduler...", skip(self))]
     fn drop(&mut self) {
         // stop heartbeat thread
         if let Some(_handle) = &self.handle {
@@ -77,28 +78,28 @@ impl Scheduler {
     /// Starts a dedicated task that periodically scans for pending jobs
     /// and assigns them to available workers. This function ensures efficient job
     /// distribution by continuously monitoring the job queue and worker availability.
+    #[tracing::instrument(level = "debug", name = "Start up scheduler", skip(self))]
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Setting up scheduler...");
-
         let scheduler = self.clone();
         let notifier = self.notifier.clone();
 
         let handle = tokio::spawn(async move {
+            let span = tracing::span!(tracing::Level::DEBUG, "Spawn pending jobs listener");
+            let _guard = span.enter();
+
             // FIXME: hardocded timer
             let mut interval = interval(Duration::from_secs(5));
 
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        // println!("Check our jobs");
                         let mut pending_jobs = scheduler.pending_jobs.lock().await;
 
-                        // jobs that were successfully submitted to a compute node
                         let mut to_remove = vec![];
 
                         // assign jobs to nodes if they're available
                         for (index, job) in pending_jobs.iter_mut().enumerate() {
-                            // println!("Check job {}", index);
+                            // log!(info, "Check job {}", index);
                             if let Some(node_id) = scheduler.find_available_node(&job.req_res).await {
                                 let mut nodes = scheduler.nodes.lock().await;
                                 let node = nodes.get_mut(&node_id).unwrap();
@@ -135,7 +136,7 @@ impl Scheduler {
                     }
 
                     _ = notifier.notified() => {
-                        println!("Stopping scheduler job assignment tasks...");
+                        log!(info, "Stopping scheduler job assignment tasks...");
                         return;
                     }
                 }
@@ -147,6 +148,7 @@ impl Scheduler {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", name = "Start health polling", skip(self))]
     pub async fn start_health_polling(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let scheduler = self.clone();
         let notifier = self.health_notifier.clone();
@@ -158,11 +160,11 @@ impl Scheduler {
                 tokio::select! {
                     _ = interval.tick() => {
                         if let Err(e) = scheduler.poll_node_health().await {
-                            eprintln!("Error polling node health: {:?}", e);
+                            log!(error,"Error polling node health: {:?}", e);
                         }
                     }
                     _ = notifier.notified() => {
-                        println!("Polling task stopping.");
+                        log!(info, "Polling task stopping.");
                         return;
                     }
                 }
@@ -176,6 +178,7 @@ impl Scheduler {
 
     /// Checks the health status of all registered compute nodes.
     /// Marks nodes as offline if they haven't sent a heartbeat in the last 60 seconds.
+    #[tracing::instrument(level = "debug", name = "Poll node health", skip(self))]
     async fn poll_node_health(&self) -> Result<(), Box<dyn std::error::Error>> {
         // regularly check which compute nodes have not called back in a while
         // mark those nodes as unavailable
@@ -190,11 +193,21 @@ impl Scheduler {
     }
 
     /// Finds an available node for a given resource requirement.
+    #[tracing::instrument(
+        level = "debug",
+        name = "Find available node",
+        skip(self),
+        fields(
+            cpu_count = %res.cpu_count,
+            memory = %res.memory,
+            time = %res.time
+        )
+    )]
     async fn find_available_node(&self, res: &RequestedResources) -> Option<String> {
         let nodes = self.nodes.lock().await;
 
         for (node_id, node) in nodes.iter() {
-            // println!("Check node_id {}", node_id);
+            // log!(info, "Check node_id {}", node_id);
             if node.status != NodeStatus::Available {
                 continue;
             }
@@ -218,11 +231,12 @@ impl Scheduler {
 
 #[tonic::async_trait]
 impl MelonScheduler for Scheduler {
+    #[tracing::instrument(level="debug", name = "Receive job submission", skip(self), fields(script_path = %request.get_ref().script_path))]
     async fn submit_job(
         &self,
         request: tonic::Request<proto::JobSubmission>,
     ) -> Result<tonic::Response<proto::MasterJobResponse>, tonic::Status> {
-        println!("get job sub request");
+        log!(debug, "get job sub request");
         let sub = request.get_ref();
 
         // create new job
@@ -246,16 +260,16 @@ impl MelonScheduler for Scheduler {
 
         // return created job id
         let response = proto::MasterJobResponse { job_id };
-        println!("response. {:?}", response);
+        log!(debug, "response. {:?}", response);
         Ok(tonic::Response::new(response))
     }
 
     /// Register a new node in a master.
+    #[tracing::instrument(level="info", name = "Register new compute node", skip(self, request), fields(address = %request.get_ref().address))]
     async fn register_node(
         &self,
         request: tonic::Request<proto::NodeInfo>,
     ) -> Result<tonic::Response<proto::RegistrationResponse>, tonic::Status> {
-        println!("Receive register node request");
         let req = request.get_ref();
         let resources = req.resources.unwrap();
         let resources = melon::NodeResources::new(resources.cpu_count as u8, resources.memory);
@@ -278,11 +292,11 @@ impl MelonScheduler for Scheduler {
         Ok(response)
     }
 
+    #[tracing::instrument(level="debug", name = "Receive heartbeat", skip(self, request), fields(node_id = %request.get_ref().node_id))]
     async fn send_heartbeat(
         &self,
         request: tonic::Request<proto::Heartbeat>,
     ) -> Result<tonic::Response<proto::HeartbeatResponse>, tonic::Status> {
-        println!("Receive hearbeat request");
         let mut nodes = self.nodes.lock().await;
         let node_id = &request.get_ref().node_id;
 
@@ -303,11 +317,11 @@ impl MelonScheduler for Scheduler {
         Ok(res)
     }
 
+    #[tracing::instrument(level = "info", name = "Receive job results", skip(self, request))]
     async fn submit_job_result(
         &self,
         request: tonic::Request<proto::JobResult>,
     ) -> Result<tonic::Response<proto::JobResultResponse>, tonic::Status> {
-        println!("Receive job result");
         let req = request.get_ref();
         let res: JobResult = req.into();
 
@@ -335,9 +349,10 @@ impl MelonScheduler for Scheduler {
         }
     }
 
+    #[tracing::instrument(level = "debug", name = "List all jobs", skip(self, _request))]
     async fn list_jobs(
         &self,
-        _: tonic::Request<proto::JobListRequest>,
+        _request: tonic::Request<proto::JobListRequest>,
     ) -> Result<tonic::Response<proto::JobListResponse>, tonic::Status> {
         let pending_jobs = self.pending_jobs.lock().await;
         let running_jobs = self.running_jobs.lock().await;
@@ -351,11 +366,16 @@ impl MelonScheduler for Scheduler {
         Ok(response)
     }
 
+    #[tracing::instrument(
+        level = "info",
+        name = "Receive cancellation request",
+        skip(self, request),
+        fields(job_id = %request.get_ref().job_id, user=%request.get_ref().user)
+    )]
     async fn cancel_job(
         &self,
         request: tonic::Request<proto::CancelJobRequest>,
     ) -> Result<tonic::Response<()>, tonic::Status> {
-        println!("Receive cancellation request");
         let req = request.get_ref();
         let id = req.job_id;
         let user = req.user.clone();
@@ -409,11 +429,16 @@ impl MelonScheduler for Scheduler {
         Err(Status::not_found("Job not found"))
     }
 
+    #[tracing::instrument(
+        level = "info",
+        name = "Receive time extension request",
+        skip(self, request),
+        fields(job_id = %request.get_ref().job_id, user=%request.get_ref().user, extension_mins=%request.get_ref().extension_mins)
+    )]
     async fn extend_job(
         &self,
         request: tonic::Request<proto::ExtendJobRequest>,
     ) -> Result<tonic::Response<()>, tonic::Status> {
-        println!("Receive extension request");
         let req = request.get_ref();
         let id = req.job_id;
         let user = req.user.clone();
