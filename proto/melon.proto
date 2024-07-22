@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package melon;
+
+service MelonScheduler {
+  rpc SubmitJob (JobSubmission) returns (MasterJobResponse) {}
+  rpc RegisterNode (NodeInfo) returns (RegistrationResponse) {}
+  rpc SendHeartbeat (Heartbeat) returns (HeartbeatResponse) {}
+  rpc SubmitJobResult (JobResult) returns (JobResultResponse) {}
+  rpc ListJobs (JobListRequest) returns (JobListResponse) {}
+  rpc CancelJob (CancelJobRequest) returns (google.protobuf.Empty) {}
+  rpc ExtendJob (ExtendJobRequest) returns (google.protobuf.Empty) {}
+}
+
+service MelonWorker {
+  rpc AssignJob (JobAssignment) returns (WorkerJobResponse) {}
+  rpc CancelJob (CancelJobRequest) returns (google.protobuf.Empty) {}
+  rpc ExtendJob (ExtendJobRequest) returns (google.protobuf.Empty) {}
+}
+
+message JobSubmission {
+  string script_path = 1;
+  string user = 2;
+  Resources req_res = 3;
+  repeated string script_args = 4;
+}
+
+message JobAssignment {
+  uint64 job_id = 1;
+  string script_path = 2;
+  string user = 3;
+  Resources req_res = 4;
+  repeated string script_args = 5;
+}
+
+message Resources {
+  uint32 cpu_count = 1;
+  uint64 memory = 2;      // in bytes
+  uint32 time = 3;        // in minutes
+}
+
+// returned by the master node
+message MasterJobResponse {
+  uint64 job_id = 1;
+}
+
+// returned by a worker node upon receive
+message WorkerJobResponse {
+  bool ack = 1;
+}
+
+message NodeInfo {
+  string address = 1;
+  NodeResources resources = 2;
+}
+
+message NodeResources {
+  uint32 cpu_count = 1;
+  uint64 memory = 2;      // in bytes
+}
+
+message RegistrationResponse {
+  string node_id = 1;
+}
+
+message Heartbeat {
+  string node_id = 1;
+}
+
+message HeartbeatResponse {
+  bool ack = 1;
+}
+
+message JobResult {
+  uint64 job_id = 1;
+  JobStatus status = 2;
+  string message = 3; // optional
+}
+
+enum JobStatus {
+  COMPLETED = 0;
+  FAILED = 1;
+  PENDING = 2;
+  RUNNING = 3;
+}
+
+message JobResultResponse {
+  bool ack = 1;
+}
+
+message JobListRequest {
+}
+
+message JobListResponse {
+  repeated JobInfo jobs = 1;
+}
+
+message JobInfo {
+  uint64 job_id = 1;
+  string name = 2;      // name of the script
+  string user = 3;      // the user that submitted the job
+  string status = 4;    // status
+  string time = 5;      // time since the job started, or "PD"
+  string nodes = 6;     // which node id was assigned, or (none)
+}
+
+message CancelJobRequest {
+  uint64 job_id = 1;
+  string user = 2;
+}
+
+message ExtendJobRequest {
+  uint64 job_id = 1;          // the job id
+  string user = 2;            // the user that submitted the job
+  uint32 extension_mins = 3;  // the requested extension in minutes
+}
