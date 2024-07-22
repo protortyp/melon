@@ -1,5 +1,10 @@
 # 🍉 Melon
 
+![](./melon.webp)
+
+> [!NOTE]
+> TLDR: Slurm, but with job extension capabilities!
+
 `Melon` is a lightweight distributed job scheduler written in Rust. This is a minimal **MVP** I wrote for fun while complaining about slurm. The one and only reason I worked on this is that slurm doesn't support extending the allocated time for a job. Melon does! No more timeout errors!! 🥳🥳
 
 Components that have been implemented so far:
