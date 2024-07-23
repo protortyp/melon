@@ -7,16 +7,17 @@ use cgroups_rs::*;
 #[cfg(target_os = "linux")]
 use sysinfo::System;
 
-use melon::proto;
+use melon_common::proto;
 use std::error::Error;
 
 #[derive(Debug, Clone)]
 pub struct CGroups {
+    #[cfg(target_os = "linux")]
     job_id: u64,
     #[cfg(target_os = "linux")]
     cgroup: Option<Cgroup>,
     #[cfg(not(target_os = "linux"))]
-    cgroup: Option<()>, // dummy field for macos/win
+    _cgroup: Option<()>, // dummy field for macos/win
 }
 
 impl Drop for CGroups {
@@ -45,14 +46,11 @@ impl CGroups {
 
     #[cfg(not(target_os = "linux"))]
     pub fn create_group_guard(
-        job_id: u64,
-        pid: u32,
-        resources: proto::Resources,
+        _job_id: u64,
+        _pid: u32,
+        _resources: proto::Resources,
     ) -> Result<Self, Box<dyn Error>> {
-        Ok(Self {
-            job_id,
-            cgroup: Some(()),
-        })
+        Ok(Self { _cgroup: Some(()) })
     }
 
     #[cfg(target_os = "linux")]

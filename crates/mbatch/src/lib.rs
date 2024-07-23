@@ -1,5 +1,6 @@
+mod arg;
 use anyhow::{anyhow, Result};
-use melon::proto::Resources;
+use melon_common::proto::Resources;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 

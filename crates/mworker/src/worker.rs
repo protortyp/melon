@@ -1,9 +1,9 @@
 use crate::arg::Args;
 use crate::cgroups::CGroups;
-use melon::proto::melon_scheduler_client::MelonSchedulerClient;
-use melon::proto::melon_worker_server::{MelonWorker, MelonWorkerServer};
-use melon::proto::{self, NodeInfo, NodeResources};
-use melon::{JobResult, JobStatus};
+use melon_common::proto::melon_scheduler_client::MelonSchedulerClient;
+use melon_common::proto::melon_worker_server::{MelonWorker, MelonWorkerServer};
+use melon_common::proto::{self, NodeInfo, NodeResources};
+use melon_common::{JobResult, JobStatus};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::process::Stdio;

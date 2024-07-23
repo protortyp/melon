@@ -1,10 +1,6 @@
-mod arg;
-use arg::Args;
 use clap::Parser;
+use mworker::{worker::Worker, Args};
 use std::time::Duration;
-mod worker;
-use worker::Worker;
-mod cgroups;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

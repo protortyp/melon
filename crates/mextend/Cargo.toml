@@ -1,0 +1,17 @@
+[package]
+name = "mextend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+melon-common = { path = "../melon-common" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tonic = { workspace = true }
+whoami = { workspace = true }
+
+[[bin]]
+name = "mextend"
+path = "src/main.rs"

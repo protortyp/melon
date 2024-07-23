@@ -2,13 +2,13 @@ use arg::Args;
 use clap::Parser;
 mod arg;
 use anyhow::Result;
-use melon::{
+use melon_common::{
     proto::melon_scheduler_server::MelonSchedulerServer,
     telemetry::{get_subscriber, init_subscriber},
 };
 use tonic::transport::Server;
 mod scheduler;
-use melon::log;
+use melon_common::log;
 use scheduler::Scheduler;
 
 #[tokio::main]

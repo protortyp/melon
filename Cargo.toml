@@ -1,9 +1,20 @@
-[package]
-name = "melon"
+[workspace]
+members = [
+    "crates/melon-common",
+    "crates/melond",
+    "crates/mbatch",
+    "crates/mcancel",
+    "crates/mworker",
+    "crates/mqueue",
+    "crates/mextend",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.86"
 clap = { version = "4.5.9", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
@@ -18,32 +29,6 @@ tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 tracing-bunyan-formatter = "0.3"
 tracing-log = "0.2"
-
-[target.'cfg(target_os = "linux")'.dependencies]
 cgroups-rs = "0.3.4"
-
-[dev-dependencies]
 tempfile = "3.10.1"
-
-[[bin]]
-name = "melond"
-path = "src/bin/melond/main.rs"
-
-[[bin]]
-name = "mbatch"
-path = "src/bin/mbatch/main.rs"
-
-[[bin]]
-name = "mworker"
-path = "src/bin/mworker/main.rs"
-
-[[bin]]
-name = "mqueue"
-path = "src/bin/mqueue/main.rs"
-
-[[bin]]
-name = "mextend"
-path = "src/bin/mextend/main.rs"
-
-[build-dependencies]
 tonic-build = "0.12"
