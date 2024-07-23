@@ -1,0 +1,15 @@
+[package]
+name = "mqueue"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+melon-common = { path = "../melon-common" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+
+[[bin]]
+name = "mqueue"
+path = "src/main.rs"

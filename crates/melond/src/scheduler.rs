@@ -1,7 +1,7 @@
-use melon::proto::melon_scheduler_server::MelonScheduler;
-use melon::proto::melon_worker_client::MelonWorkerClient;
-use melon::{log, proto, JobResult, JobStatus, RequestedResources};
-use melon::{Job, Node, NodeStatus};
+use melon_common::proto::melon_scheduler_server::MelonScheduler;
+use melon_common::proto::melon_worker_client::MelonWorkerClient;
+use melon_common::{log, proto, JobResult, JobStatus, RequestedResources};
+use melon_common::{Job, Node, NodeStatus};
 use nanoid::nanoid;
 use std::time::Duration;
 use std::time::Instant;
@@ -272,7 +272,8 @@ impl MelonScheduler for Scheduler {
     ) -> Result<tonic::Response<proto::RegistrationResponse>, tonic::Status> {
         let req = request.get_ref();
         let resources = req.resources.unwrap();
-        let resources = melon::NodeResources::new(resources.cpu_count as u8, resources.memory);
+        let resources =
+            melon_common::NodeResources::new(resources.cpu_count as u8, resources.memory);
 
         let id = nanoid!();
         let node = Node::new(

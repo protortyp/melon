@@ -26,7 +26,7 @@ Components that have been implemented so far:
 
 ## Getting Started
 
-Install all tools using `cargo install --path .`
+Install all tools using `./install-all.sh`
 
 ### Start the Daemon
 
@@ -34,6 +34,10 @@ Run the `melond` service. This is the master node that the other tools communica
 
 ```bash
 melond --port 8081
+
+# for pretty-print
+cargo install bunyan
+melond --port 8081 | bunyan
 ```
 
 Then spin up a couple of `mworker` compute nodes. Currently the available resources are read from the environment but that will change in the future (MVP, remember?). On Linux, we use `cgroups` to limit the available resources per job, based on the memory and cpu requirements that were requested. On Mac/Windows we just yolo. In order to use `cgroups` make sure to run the `mworker` command with sudo. Almost all cool features from slurm are of course not implemented. But the basics will get you going. You can override the api endpoint and it's own port.

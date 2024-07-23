@@ -1,0 +1,20 @@
+[package]
+name = "mbatch"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+melon-common = { path = "../melon-common" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+whoami = { workspace = true }
+tonic = { workspace = true }
+
+[dev-dependencies]
+tempfile = {workspace = true}
+
+[[bin]]
+name = "mbatch"
+path = "src/main.rs"

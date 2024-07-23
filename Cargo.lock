@@ -691,26 +691,58 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
-name = "melon"
+name = "mbatch"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cgroups-rs",
  "clap",
- "libc",
- "nanoid",
- "prost",
- "prost-types",
- "sysinfo",
+ "melon-common",
  "tempfile",
  "tokio",
+ "tonic",
+ "tracing",
+ "whoami",
+]
+
+[[package]]
+name = "mcancel"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "melon-common",
+ "tempfile",
+ "tokio",
+ "tonic",
+ "tracing",
+ "whoami",
+]
+
+[[package]]
+name = "melon-common"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-types",
  "tonic",
  "tonic-build",
  "tracing",
  "tracing-bunyan-formatter",
  "tracing-log 0.2.0",
  "tracing-subscriber",
- "whoami",
+]
+
+[[package]]
+name = "melond"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "melon-common",
+ "nanoid",
+ "tokio",
+ "tonic",
+ "tracing",
 ]
 
 [[package]]
@@ -718,6 +750,19 @@ name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
+
+[[package]]
+name = "mextend"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "melon-common",
+ "tokio",
+ "tonic",
+ "tracing",
+ "whoami",
+]
 
 [[package]]
 name = "mime"
@@ -746,10 +791,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "mqueue"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "melon-common",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
 name = "multimap"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "defc4c55412d89136f966bbb339008b474350e5e6e78d2714439c386b3137a03"
+
+[[package]]
+name = "mworker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cgroups-rs",
+ "clap",
+ "melon-common",
+ "sysinfo",
+ "tokio",
+ "tonic",
+ "tracing",
+]
 
 [[package]]
 name = "nanoid"

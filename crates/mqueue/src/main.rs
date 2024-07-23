@@ -1,7 +1,7 @@
 mod arg;
 use arg::Args;
 use clap::Parser;
-use melon::proto::{self, melon_scheduler_client::MelonSchedulerClient};
+use melon_common::proto::{self, melon_scheduler_client::MelonSchedulerClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,0 +1,21 @@
+[package]
+name = "mworker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+melon-common = { path = "../melon-common" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tonic = { workspace = true }
+sysinfo = { workspace = true }
+
+
+[target.'cfg(target_os = "linux")'.dependencies]
+cgroups-rs = { workspace = true }
+
+[[bin]]
+name = "mworker"
+path = "src/main.rs"

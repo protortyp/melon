@@ -2,10 +2,9 @@ use arg::Args;
 use clap::Parser;
 mod arg;
 use anyhow::Result;
-use melon::proto::melon_scheduler_client::MelonSchedulerClient;
-use melon::proto::JobSubmission;
-mod util;
-use util::parse_mbatch_comments;
+use mbatch::parse_mbatch_comments;
+use melon_common::proto::melon_scheduler_client::MelonSchedulerClient;
+use melon_common::proto::JobSubmission;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
