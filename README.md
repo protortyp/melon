@@ -40,15 +40,19 @@ cargo install bunyan
 melond --port 8081 | bunyan
 ```
 
+### Compute Nodes
+
 Then spin up a couple of `mworker` compute nodes. Currently the available resources are read from the environment but that will change in the future (MVP, remember?). On Linux, we use `cgroups` to limit the available resources per job, based on the memory and cpu requirements that were requested. On Mac/Windows we just yolo. In order to use `cgroups` make sure to run the `mworker` command with sudo. Almost all cool features from slurm are of course not implemented. But the basics will get you going. You can override the api endpoint and it's own port.
 
 ```bash
 # on linux
-sudo mworker --api_endpoint [::1]:8080 --port 8082
+sudo mworker --api_endpoint "http://[::1]:8080" --port 8082
 
 # on mac / windows => no resource limits besides timeout though!
-mworker --api_endpoint [::1]:8080 --port 8082
+mworker --api_endpoint "http://[::1]:8080" --port 8082
 ```
+
+### Submit Jobs
 
 Then to submit a job, first create a simple batch script `my_job.sh`. We use drop-in replacements for `SBATCH` instructions. Creatively as I am, we will use `MBATCH`.
 
@@ -83,13 +87,13 @@ done
 You can override the api endpoint if needed. Just make sure to override the endpoint before you pass the script and it's arguments.
 
 ```bash
-mbatch --api_endpoint [::1]:8080 my_job.sh arg1 arg2
+mbatch --api_endpoint "http://[::1]:8080" my_job.sh arg1 arg2
 ```
 
-To list all jobs:
+### List Jobs
 
 ```bash
-$ mqueue # again, override using --api_endpoint [::1]:8080
+$ mqueue # again, override using --api_endpoint "http://[::1]:8080"
 # Output:
 JOBID   NAME         USER   ST   TIME     NODES
 12      test_data/   chris  PD   0-00-00  (PD)
@@ -97,6 +101,8 @@ JOBID   NAME         USER   ST   TIME     NODES
 10      test_data/   chris  R    0-00-01  RwcSZDtzXnHm55PBcY6xS
 11      test_data/   chris  R    0-00-01  RwcSZDtzXnHm55PBcY6xS
 ```
+
+### Extend Jobs 🥳🥳🥳
 
 To extend the requested time for a pending or running job (the reason for the existence of this whole project...). Again, the `--api_endpoint` override argument is available.
 
@@ -108,8 +114,10 @@ mextend -j <job_id> -t 0-01-00
 mextend -j <job_id> -t 1-00-00
 
 # extend with override
-mextend -j <job_id> -t 1-00-00 --api_endpoint [::1]:8080
+mextend -j <job_id> -t 1-00-00 --api_endpoint "http://[::1]:8080"
 ```
+
+### Cancel Pending or Running Jobs
 
 To cancel a pending or running job:
 
@@ -117,7 +125,7 @@ To cancel a pending or running job:
 mcancel job_id
 
 # or
-mcancel --api_endpoint [::1]:8080 <job_id>
+mcancel --api_endpoint "http://[::1]:8080" <job_id>
 ```
 
 ## Contributing

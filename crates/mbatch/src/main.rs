@@ -10,8 +10,7 @@ use melon_common::proto::JobSubmission;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let url = format!("http://[::1]:{}", args.port);
-    let mut client = MelonSchedulerClient::connect(url).await?;
+    let mut client = MelonSchedulerClient::connect(args.api_endpoint).await?;
 
     let res = parse_mbatch_comments(&args.script)?;
     let req = JobSubmission {

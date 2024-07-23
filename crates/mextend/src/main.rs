@@ -7,13 +7,12 @@ use melon_common::proto::{self, melon_scheduler_client::MelonSchedulerClient};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    let endpoint = format!("http://{}", args.api_endpoint);
     let job_id = args.job;
     let user = whoami::username();
     let time_in_mins = args.extension;
     let time_in_mins = (time_in_mins.as_secs() / 60) as u32;
 
-    let mut client = MelonSchedulerClient::connect(endpoint.clone()).await?;
+    let mut client = MelonSchedulerClient::connect(args.api_endpoint).await?;
     let request = tonic::Request::new(proto::ExtendJobRequest {
         job_id,
         user,
