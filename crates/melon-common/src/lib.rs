@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use proto::{JobAssignment, JobSubmission};
 use std::time::Instant;
 pub mod error;
@@ -24,10 +25,13 @@ pub struct Job {
     pub req_res: RequestedResources,
 
     /// The time the job was submitted
-    pub submit_time: Instant,
+    pub submit_time: DateTime<Utc>,
 
     /// Start time
-    pub start_time: Option<Instant>,
+    pub start_time: Option<DateTime<Utc>>,
+
+    /// Stop time
+    pub stop_time: Option<DateTime<Utc>>,
 
     /// The job status
     pub status: JobStatus,
@@ -50,8 +54,9 @@ impl Job {
             script_path,
             script_args,
             req_res,
-            submit_time: Instant::now(),
+            submit_time: Utc::now(),
             start_time: None,
+            stop_time: None,
             status: JobStatus::Pending,
             assigned_node: None,
         }
@@ -262,14 +267,13 @@ impl From<&proto::JobResult> for JobResult {
 impl From<Job> for proto::JobInfo {
     fn from(job: Job) -> Self {
         let run_time = if let Some(start) = job.start_time {
-            let elapsed = start.elapsed();
-            let days = elapsed.as_secs() / 86400;
-            let hours = (elapsed.as_secs() % 86400) / 3600;
-            let mut minutes = (elapsed.as_secs() % 3600) / 60;
-            if minutes == 0 {
+            let elapsed = Utc::now().signed_duration_since(start);
+            let days = elapsed.num_days();
+            let hours = elapsed.num_hours() % 24;
+            let mut minutes = elapsed.num_minutes() % 60;
+            if minutes == 0 && (days > 0 || hours > 0) {
                 minutes = 1;
             }
-
             format!("{}-{:02}-{:02}", days, hours, minutes)
         } else {
             "0-00-00".to_string()
