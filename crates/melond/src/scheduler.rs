@@ -44,7 +44,7 @@ pub struct Scheduler {
     health_notifier: Arc<Notify>,
 
     /// Database Writer
-    db_writer: Arc<DatabaseHandler>,
+    db: Arc<DatabaseHandler>,
 
     /// Database Writer Sender
     db_tx: Arc<Sender<Job>>,
@@ -67,7 +67,7 @@ impl Drop for Scheduler {
         // + abort all running jobs
 
         // shutdown db_writer
-        self.db_writer.shutdown();
+        self.db.shutdown();
     }
 }
 
@@ -89,7 +89,7 @@ impl Default for Scheduler {
             notifier: Arc::new(Notify::new()),
             health_handle: None,
             health_notifier: Arc::new(Notify::new()),
-            db_writer,
+            db: db_writer,
             db_tx,
         }
     }
@@ -253,7 +253,7 @@ impl Scheduler {
 
     #[tracing::instrument(level = "info", name = "Init job counter", skip(self))]
     fn init_job_ctr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let ctr = self.db_writer.get_highest_job_id()?;
+        let ctr = self.db.get_highest_job_id()?;
         log!(debug, "Set job counter to {}", ctr);
         self.job_ctr.store(ctr, std::sync::atomic::Ordering::SeqCst);
         Ok(())
@@ -567,7 +567,7 @@ impl MelonScheduler for Scheduler {
         }
 
         // check finished jobs in database
-        match self.db_writer.get_job_opt(id) {
+        match self.db.get_job_opt(id) {
             Ok(Some(job)) => {
                 log!(debug, "Found job with id {} in database", id);
                 Ok(tonic::Response::new((&job).into()))
