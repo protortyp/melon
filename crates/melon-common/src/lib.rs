@@ -3,6 +3,8 @@ use proto::{JobAssignment, JobSubmission};
 use std::time::Instant;
 pub mod error;
 pub mod telemetry;
+use serde::{Deserialize, Serialize};
+
 pub mod proto {
     tonic::include_proto!("melon");
 }
@@ -64,6 +66,33 @@ impl Job {
 
     pub fn extend_time(&mut self, extenion_in_mins: u32) {
         self.req_res.time += extenion_in_mins;
+    }
+}
+
+impl From<&Job> for proto::Job {
+    fn from(job: &Job) -> Self {
+        proto::Job {
+            id: job.id,
+            user: job.user.clone(),
+            script_path: job.script_path.clone(),
+            script_args: job.script_args.clone(),
+            req_res: Some(proto::RequestedResources {
+                cpu_count: job.req_res.cpu_count as u32,
+                memory: job.req_res.memory,
+                time: job.req_res.time,
+            }),
+            submit_time: format_time(&job.submit_time),
+            start_time: job.start_time.map_or("".to_string(), |t| format_time(&t)),
+            stop_time: job.stop_time.map_or("".to_string(), |t| format_time(&t)),
+            status: match job.status {
+                JobStatus::Pending => proto::JobStatus::Pending as i32,
+                JobStatus::Running => proto::JobStatus::Running as i32,
+                JobStatus::Completed => proto::JobStatus::Completed as i32,
+                JobStatus::Failed(_) => proto::JobStatus::Failed as i32,
+                JobStatus::Timeout => proto::JobStatus::Timeout as i32,
+            },
+            assigned_node: job.assigned_node.clone().unwrap_or_default(),
+        }
     }
 }
 
@@ -144,7 +173,7 @@ impl NodeResources {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum JobStatus {
     Completed,
     Failed(String),
@@ -300,4 +329,15 @@ impl From<Job> for proto::JobInfo {
             nodes,
         }
     }
+}
+
+fn format_time(time: &DateTime<Utc>) -> String {
+    let now = Utc::now();
+    let duration = now.signed_duration_since(*time);
+
+    let days = duration.num_days();
+    let hours = duration.num_hours() % 24;
+    let minutes = duration.num_minutes() % 60;
+
+    format!("{}-{:02}-{:02}", days, hours, minutes)
 }

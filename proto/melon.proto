@@ -12,6 +12,7 @@ service MelonScheduler {
   rpc ListJobs (JobListRequest) returns (JobListResponse) {}
   rpc CancelJob (CancelJobRequest) returns (google.protobuf.Empty) {}
   rpc ExtendJob (ExtendJobRequest) returns (google.protobuf.Empty) {}
+  rpc GetJobInfo (GetJobInfoRequest) returns (Job) {}
 }
 
 service MelonWorker {
@@ -84,6 +85,7 @@ enum JobStatus {
   FAILED = 1;
   PENDING = 2;
   RUNNING = 3;
+  TIMEOUT = 4;
 }
 
 message JobResultResponse {
@@ -116,3 +118,27 @@ message ExtendJobRequest {
   string user = 2;            // the user that submitted the job
   uint32 extension_mins = 3;  // the requested extension in minutes
 }
+
+message GetJobInfoRequest {
+  uint64 job_id = 1;
+}
+
+message Job {
+  uint64 id = 1;
+  string user = 2;
+  string script_path = 3;
+  repeated string script_args = 4;
+  RequestedResources req_res = 5;
+  string submit_time = 6;
+  string start_time = 7;
+  string stop_time = 8;
+  JobStatus status = 9;
+  string assigned_node = 10;
+}
+
+message RequestedResources {
+  uint32 cpu_count = 1;
+  uint64 memory = 2;
+  uint32 time = 3;
+}
+

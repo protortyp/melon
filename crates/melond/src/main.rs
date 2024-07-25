@@ -10,6 +10,9 @@ use tonic::transport::Server;
 mod scheduler;
 use melon_common::log;
 use scheduler::Scheduler;
+use std::sync::Arc;
+use tokio::signal;
+use tokio::sync::Notify;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,10 +31,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // start node poller
     scheduler.start_health_polling().await?;
 
-    Server::builder()
+    // catch shutdown signal
+    let shutdown = Arc::new(Notify::new());
+    let shutdown_clone = shutdown.clone();
+    tokio::spawn(async move {
+        signal::ctrl_c().await.expect("Failed to listen for ctrl+c");
+        shutdown_clone.notify_one();
+    });
+
+    let server = Server::builder()
         .add_service(MelonSchedulerServer::new(scheduler))
-        .serve(addr)
-        .await?;
+        .serve_with_shutdown(addr, shutdown.notified());
+
+    server.await?;
+
+    log!(info, "Server shutting down");
 
     Ok(())
 }

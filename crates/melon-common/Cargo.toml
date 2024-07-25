@@ -12,6 +12,7 @@ tracing-subscriber = { workspace = true }
 tracing-bunyan-formatter = { workspace = true }
 tracing-log = { workspace = true }
 chrono = { workspace = true }
+serde = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }

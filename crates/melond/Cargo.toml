@@ -11,6 +11,11 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tonic = { workspace = true }
 nanoid = { workspace = true }
+rusqlite = { workspace = true }
+directories = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
 
 
 [[bin]]

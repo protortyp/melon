@@ -1,7 +1,9 @@
+use chrono::Utc;
 use melon_common::proto::melon_scheduler_server::MelonScheduler;
 use melon_common::proto::melon_worker_client::MelonWorkerClient;
 use melon_common::{log, proto, JobResult, JobStatus, RequestedResources};
 use melon_common::{Job, Node, NodeStatus};
+use melond::DatabaseHandler;
 use nanoid::nanoid;
 use std::time::Duration;
 use std::time::Instant;
@@ -9,7 +11,8 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{atomic::AtomicU64, Arc},
 };
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc, Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tonic::Status;
@@ -39,6 +42,12 @@ pub struct Scheduler {
 
     /// Thread notifier
     health_notifier: Arc<Notify>,
+
+    /// Database Writer
+    db_writer: Arc<DatabaseHandler>,
+
+    /// Database Writer Sender
+    db_tx: Arc<Sender<Job>>,
 }
 
 impl Drop for Scheduler {
@@ -56,11 +65,21 @@ impl Drop for Scheduler {
 
         // clear all pending jobs or save them to file
         // + abort all running jobs
+
+        // shutdown db_writer
+        self.db_writer.shutdown();
     }
 }
 
 impl Default for Scheduler {
     fn default() -> Self {
+        // Spawn Database Writer
+        let (db_tx, db_rx) = mpsc::channel::<Job>(100);
+        let mut db_writer = DatabaseHandler::new(db_rx).expect("Could not init database write");
+        db_writer.run().expect("Could not start database writer");
+        let db_writer = Arc::new(db_writer);
+        let db_tx = Arc::new(db_tx);
+
         Self {
             job_ctr: Arc::new(AtomicU64::new(0)),
             nodes: Arc::new(Mutex::new(HashMap::new())),
@@ -70,6 +89,8 @@ impl Default for Scheduler {
             notifier: Arc::new(Notify::new()),
             health_handle: None,
             health_notifier: Arc::new(Notify::new()),
+            db_writer,
+            db_tx,
         }
     }
 }
@@ -127,7 +148,7 @@ impl Scheduler {
                         let mut running_jobs = scheduler.running_jobs.lock().await;
                         for index in to_remove.iter().rev() {
                             let mut job = pending_jobs.remove(*index).expect("Job should exist");
-                            job.start_time = Some(Instant::now());
+                            job.start_time = Some(Utc::now());
                             job.status = JobStatus::Running;
                             let job_id = job.id;
 
@@ -338,7 +359,20 @@ impl MelonScheduler for Scheduler {
             node.free_avail_resource(res);
 
             // remove job from tracking map
-            jobs.remove(&job_id);
+            let mut job = jobs.remove(&job_id).unwrap();
+
+            // send the finished job to the database writer for permanent storage
+            job.stop_time = Some(Utc::now());
+            let tx = self.db_tx.clone();
+            // FIXME: hardcoded timeout
+            if let Err(e) = tx.send_timeout(job, Duration::from_millis(100)).await {
+                log!(
+                    error,
+                    "Could not send job {} to database writer: {}",
+                    job_id,
+                    e
+                );
+            }
 
             // ack
             let res = proto::JobResultResponse { ack: true };
@@ -491,5 +525,55 @@ impl MelonScheduler for Scheduler {
         }
 
         Err(tonic::Status::not_found("Couldn't find job id"))
+    }
+
+    #[tracing::instrument(
+        level = "info",
+        name = "Get job by job id",
+        skip(self, request),
+        fields(job_id = %request.get_ref().job_id)
+    )]
+    async fn get_job_info(
+        &self,
+        request: tonic::Request<proto::GetJobInfoRequest>,
+    ) -> Result<tonic::Response<proto::Job>, tonic::Status> {
+        let req = request.get_ref();
+        let id = req.job_id;
+
+        // check in running jobs => O(1)
+        let running_jobs = self.running_jobs.lock().await;
+        if let Some(job) = running_jobs.get(&id) {
+            log!(debug, "Found job with id {} in running jobs", id);
+            return Ok(tonic::Response::new(job.into()));
+        }
+
+        // check in pending jobs
+        let pending_jobs = self.pending_jobs.lock().await;
+        if let Some(pos) = pending_jobs.iter().position(|job| job.id == id) {
+            log!(debug, "Found job with id {} in pending jobs", id);
+            let job = pending_jobs.get(pos).expect("exists for sure");
+            return Ok(tonic::Response::new(job.into()));
+        }
+
+        // check finished jobs in database
+        match self.db_writer.get_job_opt(id) {
+            Ok(Some(job)) => {
+                log!(debug, "Found job with id {} in database", id);
+                Ok(tonic::Response::new((&job).into()))
+            }
+            Ok(None) => {
+                log!(debug, "Could not find job with id {} anywhere", id);
+                Err(tonic::Status::not_found(format!("Job ID not found {}", id)))
+            }
+            Err(e) => {
+                log!(
+                    error,
+                    "Unexpected error when looking for job with id {} in database: {}",
+                    id,
+                    e
+                );
+                Err(tonic::Status::unknown(format!("Unexpected Error {}", e)))
+            }
+        }
     }
 }
