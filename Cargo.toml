@@ -7,6 +7,7 @@ members = [
     "crates/mworker",
     "crates/mqueue",
     "crates/mextend",
+    "crates/mshow",
 ]
 resolver = "2"
 

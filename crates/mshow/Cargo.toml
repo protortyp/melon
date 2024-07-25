@@ -1,0 +1,15 @@
+[package]
+name = "mshow"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+melon-common = { path = "../melon-common" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+
+[[bin]]
+name = "mshow"
+path = "src/main.rs"

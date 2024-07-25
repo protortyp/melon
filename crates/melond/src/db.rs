@@ -95,7 +95,7 @@ impl DatabaseHandler {
                 submit_time: row.get(7)?,
                 start_time: row.get(8)?,
                 stop_time: row.get(9)?,
-                status: serde_json::from_str(&row.get::<_, String>(10)?).unwrap(),
+                status: JobStatus::from(row.get::<_, String>(10)?),
                 assigned_node: row.get(11)?,
             })
         })?;

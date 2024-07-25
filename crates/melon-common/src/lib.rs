@@ -182,6 +182,25 @@ pub enum JobStatus {
     Timeout,
 }
 
+impl From<String> for JobStatus {
+    fn from(value: String) -> Self {
+        match value.to_lowercase().as_str() {
+            "completed" => JobStatus::Completed,
+            "pending" => JobStatus::Pending,
+            "running" => JobStatus::Running,
+            "timeout" => JobStatus::Timeout,
+            s if s.starts_with("failed") => {
+                let error_message = s
+                    .strip_prefix("failed")
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "Unknown error".to_string());
+                JobStatus::Failed(error_message)
+            }
+            _ => JobStatus::Failed("Unknown status".to_string()),
+        }
+    }
+}
+
 /// A compute node instance.
 #[derive(Clone, Debug)]
 pub struct Node {
