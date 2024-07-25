@@ -64,8 +64,8 @@ impl DatabaseHandler {
                         log!(debug, "Receive new finished job with id {}", job.id);
 
                         // TODO: retry on transient errors
-                        if insert_finished_job(&conn, &job).is_err() {
-                            log!(error, "Error storing finished job with id {}", job.id);
+                        if let Err(e) = insert_finished_job(&conn, &job) {
+                            log!(error, "Error storing finished job with id {}: {}", job.id, e);
                         }
                     }
                 }
@@ -110,7 +110,7 @@ fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::
     let status = format!("{:?}", job.status);
 
     conn.execute(
-        "INSERT INTO finished_jobs \
+        "INSERT INTO jobs \
          (id, user, script_path, script_args, cpu_count, memory, time, submit_time, start_time, stop_time, status, assigned_node, exit_message) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![

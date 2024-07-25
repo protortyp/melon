@@ -264,8 +264,9 @@ impl From<JobResult> for proto::JobResult {
         let (status, message) = match value.status {
             JobStatus::Completed => (0, String::new()),
             JobStatus::Failed(msg) => (1, msg),
-            JobStatus::Running => (2, String::new()),
-            _ => unreachable!("Unreachable job status"),
+            JobStatus::Pending => (2, String::new()),
+            JobStatus::Running => (3, String::new()),
+            JobStatus::Timeout => (4, "Timd Out".to_string()),
         };
 
         Self {
@@ -283,6 +284,7 @@ impl From<&proto::JobResult> for JobResult {
             1 => JobStatus::Failed(value.message.clone()),
             2 => JobStatus::Pending,
             3 => JobStatus::Running,
+            4 => JobStatus::Timeout,
             _ => panic!("Unknown status"),
         };
 

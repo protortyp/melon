@@ -345,11 +345,11 @@ impl MelonScheduler for Scheduler {
         request: tonic::Request<proto::JobResult>,
     ) -> Result<tonic::Response<proto::JobResultResponse>, tonic::Status> {
         let req = request.get_ref();
-        let res: JobResult = req.into();
+        let result: JobResult = req.into();
 
-        let job_id = res.id;
+        let job_id = result.id;
         let mut jobs = self.running_jobs.lock().await;
-        if let Some(job) = jobs.get(&res.id) {
+        if let Some(job) = jobs.get(&result.id) {
             let res = &job.req_res;
             let node_id = job.assigned_node.as_ref().expect("Expect assigned node id");
 
@@ -363,6 +363,7 @@ impl MelonScheduler for Scheduler {
 
             // send the finished job to the database writer for permanent storage
             job.stop_time = Some(Utc::now());
+            job.status = result.status;
             let tx = self.db_tx.clone();
             // FIXME: hardcoded timeout
             if let Err(e) = tx.send_timeout(job, Duration::from_millis(100)).await {
