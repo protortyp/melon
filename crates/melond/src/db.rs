@@ -102,6 +102,15 @@ impl DatabaseHandler {
 
         Ok(job_iter.next().transpose()?)
     }
+
+    pub fn get_highest_job_id(&self) -> Result<u64, Box<dyn std::error::Error>> {
+        let conn = Connection::open(get_database_path().ok_or("Failed to get database path")?)?;
+
+        let mut stmt = conn.prepare("SELECT MAX(id) FROM jobs")?;
+        let max_id: Option<u64> = stmt.query_row([], |row| row.get(0))?;
+
+        Ok(max_id.unwrap_or(0))
+    }
 }
 
 #[tracing::instrument(level = "debug", name = "Insert finished job", skip(conn, job), fields(job_id = %job.id))]
