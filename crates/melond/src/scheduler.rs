@@ -1,9 +1,9 @@
+use crate::db::DatabaseHandler;
 use chrono::Utc;
 use melon_common::proto::melon_scheduler_server::MelonScheduler;
 use melon_common::proto::melon_worker_client::MelonWorkerClient;
 use melon_common::{log, proto, JobResult, JobStatus, RequestedResources};
 use melon_common::{Job, Node, NodeStatus};
-use melond::DatabaseHandler;
 use nanoid::nanoid;
 use std::time::Duration;
 use std::time::Instant;

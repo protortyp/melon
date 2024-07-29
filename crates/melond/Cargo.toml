@@ -17,6 +17,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 
+[dev-dependencies]
+tempdir = { workspace = true }
+
+[lib]
+name = "melond"
+path = "src/lib.rs"
 
 [[bin]]
 name = "melond"

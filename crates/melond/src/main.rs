@@ -2,17 +2,16 @@ use arg::Args;
 use clap::Parser;
 mod arg;
 use anyhow::Result;
+use melon_common::log;
 use melon_common::{
     proto::melon_scheduler_server::MelonSchedulerServer,
     telemetry::{get_subscriber, init_subscriber},
 };
-use tonic::transport::Server;
-mod scheduler;
-use melon_common::log;
-use scheduler::Scheduler;
+use melond::scheduler::Scheduler;
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::Notify;
+use tonic::transport::Server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
