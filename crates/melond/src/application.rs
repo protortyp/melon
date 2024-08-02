@@ -1,6 +1,6 @@
 use crate::{scheduler::Scheduler, settings::Settings};
 use anyhow::{Context, Result};
-use melon_common::proto::melon_scheduler_server::MelonSchedulerServer;
+use melon_common::{log, proto::melon_scheduler_server::MelonSchedulerServer};
 use tokio::net::TcpListener;
 use tonic::transport::{server::Router, Server};
 
@@ -16,7 +16,7 @@ pub struct Application {
 }
 
 impl Application {
-    #[tracing::instrument(level = "debug", name = "Build Application")]
+    #[tracing::instrument(level = "info", name = "Build Application")]
     pub async fn build(settings: Settings) -> Result<Self, anyhow::Error> {
         let addr = format!(
             "{}:{}",
@@ -24,6 +24,13 @@ impl Application {
         );
         let listener = TcpListener::bind(&addr).await?;
         let port = listener.local_addr()?.port();
+
+        log!(
+            info,
+            "Starting scheduler on {}:{}",
+            settings.application.host,
+            port
+        );
 
         let mut scheduler = Scheduler::default();
         scheduler
