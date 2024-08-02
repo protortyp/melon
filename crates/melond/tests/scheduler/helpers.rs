@@ -2,7 +2,7 @@ use anyhow::Result;
 use melon_common::{
     configuration::get_configuration,
     proto::{
-        melon_scheduler_client::MelonSchedulerClient, Heartbeat, HeartbeatResponse, NodeInfo,
+        self, melon_scheduler_client::MelonSchedulerClient, Heartbeat, HeartbeatResponse, NodeInfo,
         NodeResources, RegistrationResponse,
     },
 };
@@ -18,17 +18,10 @@ pub struct TestApp {
 impl TestApp {
     pub async fn register_node(
         &self,
+        info: NodeInfo,
     ) -> Result<Response<RegistrationResponse>, Box<dyn std::error::Error>> {
         let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
-        let resources = NodeResources {
-            cpu_count: 8,
-            memory: 4 * 1024 * 1024,
-        };
-        let req = NodeInfo {
-            address: format!("http://[::1]:{}", self.port),
-            resources: Some(resources),
-        };
-        let request = tonic::Request::new(req);
+        let request = tonic::Request::new(info);
         let response = client.register_node(request).await?;
         Ok(response)
     }
@@ -42,6 +35,45 @@ impl TestApp {
 
         let request = tonic::Request::new(req);
         let response = client.send_heartbeat(request).await?;
+        Ok(response)
+    }
+
+    pub async fn submit_job(
+        &self,
+        submission: proto::JobSubmission,
+    ) -> Result<tonic::Response<proto::MasterJobResponse>, Box<dyn std::error::Error>> {
+        let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
+        let request = tonic::Request::new(submission);
+        let response = client.submit_job(request).await?;
+        Ok(response)
+    }
+
+    pub async fn list_jobs(
+        &self,
+    ) -> Result<tonic::Response<proto::JobListResponse>, Box<dyn std::error::Error>> {
+        let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
+        let request = tonic::Request::new(proto::JobListRequest {});
+        let response = client.list_jobs(request).await?;
+        Ok(response)
+    }
+
+    pub async fn submit_job_result(
+        &self,
+        result: proto::JobResult,
+    ) -> Result<tonic::Response<proto::JobResultResponse>, Box<dyn std::error::Error>> {
+        let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
+        let request = tonic::Request::new(result);
+        let response = client.submit_job_result(request).await?;
+        Ok(response)
+    }
+
+    pub async fn cancel_job(
+        &self,
+        request: proto::CancelJobRequest,
+    ) -> Result<tonic::Response<()>, Box<dyn std::error::Error>> {
+        let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
+        let request = tonic::Request::new(request);
+        let response = client.cancel_job(request).await?;
         Ok(response)
     }
 }
@@ -77,5 +109,16 @@ where
     TestApp {
         address: format!("http://{}:{}", settings.application.host, port),
         port,
+    }
+}
+
+pub fn get_node_info(port: u16) -> NodeInfo {
+    let resources = NodeResources {
+        cpu_count: 8,
+        memory: 4 * 1024 * 1024,
+    };
+    NodeInfo {
+        address: format!("http://[::1]:{}", port),
+        resources: Some(resources),
     }
 }
