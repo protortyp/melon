@@ -907,6 +907,7 @@ dependencies = [
  "serde-aux",
  "serde_json",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tracing",
 ]
