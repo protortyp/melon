@@ -354,7 +354,7 @@ async fn test_extend_running_job() {
 #[tokio::test]
 async fn test_reject_unauthorized_extension_pending() {
     let app = spawn_app().await;
-    let mut mock_setup = setup_mock_worker().await;
+    let mock_setup = setup_mock_worker().await;
     let info = get_node_info(mock_setup.port);
     app.register_node(info).await.unwrap();
     let submission = get_job_submission();

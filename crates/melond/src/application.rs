@@ -6,6 +6,7 @@ use tonic::transport::{server::Router, Server};
 
 pub struct Application {
     /// Settings
+    #[allow(dead_code)]
     settings: Settings,
     /// Server
     server: Router,
