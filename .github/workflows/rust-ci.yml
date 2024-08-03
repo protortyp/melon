@@ -14,7 +14,7 @@ jobs:
       - name: Set up Protoc
         uses: arduino/setup-protoc@v1
         with:
-          version: "27.x"
+          version: "23.x"
       - name: cargo check
         run: cargo check
   clippy:
@@ -25,7 +25,7 @@ jobs:
       - name: Set up Protoc
         uses: arduino/setup-protoc@v1
         with:
-          version: "27.x"
+          version: "23.x"
       - name: cargo clippy --all-features --all-targets -- -D warnings
         run: cargo clippy --all-features --all-targets -- -D warnings
   # doc:
@@ -43,7 +43,7 @@ jobs:
       - name: Set up Protoc
         uses: arduino/setup-protoc@v1
         with:
-          version: "27.x"
+          version: "23.x"
       - name: cargo fmt --check
         run: cargo fmt --check
   fmt-nightly:
@@ -56,7 +56,7 @@ jobs:
       - name: Set up Protoc
         uses: arduino/setup-protoc@v1
         with:
-          version: "27.x"
+          version: "23.x"
       - name: cargo +nightly fmt --check
         run: cargo +nightly fmt --check
   test:
@@ -67,7 +67,7 @@ jobs:
       - name: Set up Protoc
         uses: arduino/setup-protoc@v1
         with:
-          version: "27.x"
+          version: "23.x"
       - name: cargo test
         run: cargo test
   coverage:
@@ -82,7 +82,7 @@ jobs:
       - name: Set up Protoc
         uses: arduino/setup-protoc@v1
         with:
-          version: "27.x"
+          version: "23.x"
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         run: cargo generate-lockfile
