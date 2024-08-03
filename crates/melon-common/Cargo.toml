@@ -13,6 +13,8 @@ tracing-bunyan-formatter = { workspace = true }
 tracing-log = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+config = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }

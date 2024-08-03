@@ -16,9 +16,13 @@ directories = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
+serde-aux = { workspace = true }
+tokio-stream =  { workspace = true }
 
 [dev-dependencies]
 tempdir = { workspace = true }
+assert_cmd = {workspace = true}
+predicates = {workspace = true}
 
 [lib]
 name = "melond"

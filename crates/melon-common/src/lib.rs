@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use proto::{JobAssignment, JobSubmission};
 use std::time::Instant;
+pub mod configuration;
 pub mod error;
 pub mod telemetry;
 use serde::{Deserialize, Serialize};

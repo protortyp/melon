@@ -39,3 +39,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = {version = "0.4.38" , features = ["serde"] }
 tempdir = "0.3.7"
+config = "0.13"
+serde-aux = "4.5.0"
+tokio-stream = "0.1"
+assert_cmd = "2.0.15"
+predicates = "3.1.2"
