@@ -1,5 +1,6 @@
 use proto::{JobAssignment, JobSubmission};
 use std::time::Instant;
+pub mod configuration;
 pub mod error;
 pub mod telemetry;
 pub mod proto {

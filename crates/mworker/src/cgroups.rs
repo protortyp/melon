@@ -13,11 +13,14 @@ use std::error::Error;
 #[derive(Debug, Clone)]
 pub struct CGroups {
     #[cfg(target_os = "linux")]
+    #[allow(dead_code)]
     job_id: u64,
     #[cfg(target_os = "linux")]
+    #[allow(dead_code)]
     cgroup: Option<Cgroup>,
     #[cfg(not(target_os = "linux"))]
-    _cgroup: Option<()>, // dummy field for macos/win
+    #[allow(dead_code)]
+    cgroup: Option<()>, // dummy field for macos/win
 }
 
 impl Drop for CGroups {
@@ -50,7 +53,7 @@ impl CGroups {
         _pid: u32,
         _resources: proto::Resources,
     ) -> Result<Self, Box<dyn Error>> {
-        Ok(Self { _cgroup: Some(()) })
+        Ok(Self { cgroup: Some(()) })
     }
 
     #[cfg(target_os = "linux")]

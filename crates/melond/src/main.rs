@@ -1,37 +1,23 @@
-use arg::Args;
-use clap::Parser;
-mod arg;
 use anyhow::Result;
 use melon_common::{
-    proto::melon_scheduler_server::MelonSchedulerServer,
+    configuration::get_configuration,
+    log,
     telemetry::{get_subscriber, init_subscriber},
 };
-use tonic::transport::Server;
-mod scheduler;
-use melon_common::log;
-use scheduler::Scheduler;
+use melond::application::Application;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
-    let addr = format!("[::1]:{}", args.port).parse()?;
+    let settings = get_configuration().expect("Failed to read configuration.");
 
     let subscriber = get_subscriber("melond".into(), "info".into(), std::io::stdout);
     init_subscriber(subscriber);
 
-    log!(info, "Starting up at {}", addr);
+    let application = Application::build(settings).await.map_err(|e| {
+        log!(info, "Failed to build application: {}", e);
+        std::io::Error::new(std::io::ErrorKind::Other, "Failed to build application.")
+    })?;
 
-    let mut scheduler = Scheduler::default();
-    // setup scheduler threads
-    scheduler.start().await?;
-
-    // start node poller
-    scheduler.start_health_polling().await?;
-
-    Server::builder()
-        .add_service(MelonSchedulerServer::new(scheduler))
-        .serve(addr)
-        .await?;
-
+    application.run_until_stopped().await?;
     Ok(())
 }
