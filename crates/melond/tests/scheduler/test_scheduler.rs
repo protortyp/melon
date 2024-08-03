@@ -41,66 +41,76 @@ async fn worker_heartbeat_rejects_unknown_node() {
 #[tokio::test]
 async fn submit_job_works() {
     let app = spawn_app().await;
-    let submission = proto::JobSubmission {
-        user: "chris".to_string(),
-        script_path: "sasda".to_string(),
-        req_res: Some(proto::Resources {
-            cpu_count: 1,
-            memory: 4 * 1024 * 1024,
-            time: 1024,
-        }),
-        script_args: [].to_vec(),
-    };
+    let submission = get_job_submission();
 
     let res = app.submit_job(submission).await;
+
     assert!(res.is_ok())
 }
 
 #[tokio::test]
-async fn list_jobs_works() {
+async fn test_list_pending_job() {
     let app = spawn_app().await;
-    let submission = proto::JobSubmission {
-        user: "chris".to_string(),
-        script_path: "sasda".to_string(),
-        req_res: Some(proto::Resources {
-            cpu_count: 1,
-            memory: 4 * 1024 * 1024,
-            time: 1024,
-        }),
-        script_args: [].to_vec(),
-    };
+    let submission = get_job_submission();
     let res = app.submit_job(submission.clone()).await.unwrap();
     let res = res.get_ref();
     let job_id = res.job_id;
 
-    let res = app.list_jobs().await;
-
-    assert!(res.is_ok());
-
-    let res = res.unwrap();
+    let res = app.list_jobs().await.unwrap();
     let res = res.get_ref();
     let first_job = res.jobs.first().unwrap();
+
     assert_eq!(first_job.job_id, job_id);
     assert_eq!(first_job.user, submission.user);
     assert_eq!(first_job.status, "PD".to_string());
 }
 
+#[tokio::test]
+async fn test_list_running_job() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let res = app.submit_job(submission.clone()).await.unwrap();
+    let res = res.get_ref();
+    let job_id = res.job_id;
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
+
+    let res = app.list_jobs().await.unwrap();
+    let res = res.get_ref();
+    let first_job = res.jobs.first().unwrap();
+
+    assert_eq!(first_job.job_id, job_id);
+    assert_eq!(first_job.user, submission.user);
+    assert_eq!(first_job.status, "R".to_string());
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
 struct MockWorkerSetup {
-    rx: mpsc::Receiver<proto::JobAssignment>,
-    cancel_rx: mpsc::Receiver<proto::CancelJobRequest>,
+    job_assignment_receiver: mpsc::Receiver<proto::JobAssignment>,
+    job_cancellation_receiver: mpsc::Receiver<proto::CancelJobRequest>,
     server_notifier: watch::Sender<()>,
     server_handle: tokio::task::JoinHandle<()>,
+    job_extension_receiver: mpsc::Receiver<proto::ExtendJobRequest>,
     port: u16,
 }
 
 async fn setup_mock_worker() -> MockWorkerSetup {
-    let (tx, rx) = mpsc::channel(1);
-    let (cancel_tx, cancel_rx) = mpsc::channel(1);
+    let (job_assignment_sender, job_assignment_receiver) = mpsc::channel(1);
+    let (job_cancellation_sender, job_cancellation_receiver) = mpsc::channel(1);
     let (server_notifier, server_notifier_rx) = watch::channel(());
+    let (job_extension_sender, job_extension_receiver) = mpsc::channel(1);
 
-    let worker = MockWorker::new(tx.clone(), cancel_tx.clone())
-        .await
-        .unwrap();
+    let worker = MockWorker::new(
+        job_assignment_sender.clone(),
+        job_cancellation_sender.clone(),
+        job_extension_sender.clone(),
+    )
+    .await
+    .unwrap();
 
     let addr = String::from("[::1]:0");
     let listener = TcpListener::bind(&addr).await.unwrap();
@@ -122,49 +132,44 @@ async fn setup_mock_worker() -> MockWorkerSetup {
     });
 
     MockWorkerSetup {
-        rx,
-        cancel_rx,
+        job_assignment_receiver,
+        job_cancellation_receiver,
         server_notifier,
         server_handle,
+        job_extension_receiver,
         port,
     }
 }
 
 #[tokio::test]
 async fn test_successful_job_assignment() {
-    // Arrange
     let app = spawn_app().await;
     let mut mock_setup = setup_mock_worker().await;
     let info = get_node_info(mock_setup.port);
     app.register_node(info).await.unwrap();
 
-    // Act
     let submission = get_job_submission();
     let res = app.submit_job(submission.clone()).await.unwrap();
     let job_response = res.get_ref();
-    let job_assignment = mock_setup.rx.recv().await.unwrap();
+    let job_assignment = mock_setup.job_assignment_receiver.recv().await.unwrap();
 
-    // Assert
     assert_eq!(job_response.job_id, job_assignment.job_id);
     assert_eq!(submission.req_res, job_assignment.req_res);
 
-    // Shutdown
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
 }
 
 #[tokio::test]
 async fn test_submit_job_results() {
-    // Arrange
     let app = spawn_app().await;
     let mut mock_setup = setup_mock_worker().await;
     let info = get_node_info(mock_setup.port);
     app.register_node(info).await.unwrap();
     let submission = get_job_submission();
     let _ = app.submit_job(submission.clone()).await.unwrap();
-    let job_assignment = mock_setup.rx.recv().await.unwrap();
+    let job_assignment = mock_setup.job_assignment_receiver.recv().await.unwrap();
 
-    // Act
     let job_result = proto::JobResult {
         job_id: job_assignment.job_id,
         status: 1,
@@ -173,23 +178,20 @@ async fn test_submit_job_results() {
     let res = app.submit_job_result(job_result).await;
     assert!(res.is_ok());
 
-    // Shutdown
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
 }
 
 #[tokio::test]
 async fn test_submit_job_fails_for_unknown_id() {
-    // Arrange
     let app = spawn_app().await;
     let mut mock_setup = setup_mock_worker().await;
     let info = get_node_info(mock_setup.port);
     app.register_node(info).await.unwrap();
     let submission = get_job_submission();
     let _ = app.submit_job(submission.clone()).await.unwrap();
-    let _ = mock_setup.rx.recv().await.unwrap();
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
 
-    // Act
     let job_result = proto::JobResult {
         job_id: 99999999,
         status: 1,
@@ -198,21 +200,18 @@ async fn test_submit_job_fails_for_unknown_id() {
     let res = app.submit_job_result(job_result).await;
     assert!(res.is_err());
 
-    // Shutdown
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
 }
 
 #[tokio::test]
 async fn test_cancel_pending_job_successfully() {
-    // Arrange
     let app = spawn_app().await;
     let submission = get_job_submission();
     let res = app.submit_job(submission.clone()).await.unwrap();
     let res = res.get_ref();
     let job_id = res.job_id;
 
-    // Act
     let request = proto::CancelJobRequest {
         job_id,
         user: TEST_USER.to_string(),
@@ -223,14 +222,12 @@ async fn test_cancel_pending_job_successfully() {
 
 #[tokio::test]
 async fn test_cancel_pending_job_fails_unauthorized() {
-    // Arrange
     let app = spawn_app().await;
     let submission = get_job_submission();
     let res = app.submit_job(submission.clone()).await.unwrap();
     let res = res.get_ref();
     let job_id = res.job_id;
 
-    // Act
     let request = proto::CancelJobRequest {
         job_id,
         user: "RANDOM USER".to_string(),
@@ -241,7 +238,6 @@ async fn test_cancel_pending_job_fails_unauthorized() {
 
 #[tokio::test]
 async fn test_cancel_running_job() {
-    // Arrange
     let app = spawn_app().await;
     let mut mock_setup = setup_mock_worker().await;
     let info = get_node_info(mock_setup.port);
@@ -250,28 +246,25 @@ async fn test_cancel_running_job() {
     let res = app.submit_job(submission.clone()).await.unwrap();
     let res = res.get_ref();
     let job_id = res.job_id;
-    let _ = mock_setup.rx.recv().await.unwrap();
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
 
-    // Act
     let request = proto::CancelJobRequest {
         job_id,
         user: TEST_USER.to_string(),
     };
     let res = app.cancel_job(request).await;
-    let cancel_request = mock_setup.cancel_rx.recv().await.unwrap();
+    let cancel_request = mock_setup.job_cancellation_receiver.recv().await.unwrap();
 
     assert!(res.is_ok());
     assert_eq!(cancel_request.job_id, job_id);
     assert_eq!(cancel_request.user, TEST_USER.to_string());
 
-    // Shutdown
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
 }
 
 #[tokio::test]
 async fn test_reject_running_job_cancellation_with_incorrect_user() {
-    // Arrange
     let app = spawn_app().await;
     let mut mock_setup = setup_mock_worker().await;
     let info = get_node_info(mock_setup.port);
@@ -280,9 +273,8 @@ async fn test_reject_running_job_cancellation_with_incorrect_user() {
     let res = app.submit_job(submission.clone()).await.unwrap();
     let res = res.get_ref();
     let job_id = res.job_id;
-    let _ = mock_setup.rx.recv().await.unwrap();
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
 
-    // Act
     let request = proto::CancelJobRequest {
         job_id,
         user: "UNKNOWN".to_string(),
@@ -290,9 +282,175 @@ async fn test_reject_running_job_cancellation_with_incorrect_user() {
     let res = app.cancel_job(request).await;
     assert!(res.is_err());
 
-    // Shutdown
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_reject_unknown_cancel_request() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let _ = app.submit_job(submission.clone()).await.unwrap();
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
+
+    let request = proto::CancelJobRequest {
+        job_id: 9999000,
+        user: TEST_USER.to_string(),
+    };
+    let res = app.cancel_job(request).await;
+    assert!(res.is_err());
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_extend_pending_job() {
+    let app = spawn_app().await;
+    let submission = get_job_submission();
+    let res = app.submit_job(submission.clone()).await.unwrap();
+    let res = res.get_ref();
+
+    let request = proto::ExtendJobRequest {
+        job_id: res.job_id,
+        user: TEST_USER.to_string(),
+        extension_mins: 125,
+    };
+    let res = app.extend_job(request).await;
+    assert!(res.is_ok());
+}
+
+#[tokio::test]
+async fn test_extend_running_job() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let res = app.submit_job(submission.clone()).await.unwrap();
+    let res = res.get_ref();
+    let job_id = res.job_id;
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
+
+    let request = proto::ExtendJobRequest {
+        job_id,
+        user: TEST_USER.to_string(),
+        extension_mins: 125,
+    };
+    let _ = app.extend_job(request).await.unwrap();
+    let request = mock_setup.job_extension_receiver.recv().await.unwrap();
+
+    assert_eq!(request.extension_mins, 125);
+    assert_eq!(request.job_id, job_id);
+    assert_eq!(request.user, TEST_USER.to_string());
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_reject_unauthorized_extension_pending() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let res = app.submit_job(submission.clone()).await.unwrap();
+    let res = res.get_ref();
+    let job_id = res.job_id;
+
+    let request = proto::ExtendJobRequest {
+        job_id,
+        user: "UNKNOWN".to_string(),
+        extension_mins: 125,
+    };
+    let res = app.extend_job(request).await;
+
+    assert!(res.is_err());
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_reject_unauthorized_extension_running() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let res = app.submit_job(submission.clone()).await.unwrap();
+    let res = res.get_ref();
+    let job_id = res.job_id;
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
+
+    let request = proto::ExtendJobRequest {
+        job_id,
+        user: "UNKNOWN".to_string(),
+        extension_mins: 125,
+    };
+    let res = app.extend_job(request).await;
+
+    assert!(res.is_err());
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_reject_unknown_extension_for_pending() {
+    let app = spawn_app().await;
+    let submission = get_job_submission();
+    let _ = app.submit_job(submission.clone()).await.unwrap();
+
+    let request = proto::ExtendJobRequest {
+        job_id: 99999,
+        user: TEST_USER.to_string(),
+        extension_mins: 125,
+    };
+    let res = app.extend_job(request).await;
+
+    assert!(res.is_err());
+}
+
+#[tokio::test]
+async fn test_reject_unknown_extension_for_running() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let _ = app.submit_job(submission.clone()).await.unwrap();
+    let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
+
+    let request = proto::ExtendJobRequest {
+        job_id: 99999,
+        user: TEST_USER.to_string(),
+        extension_mins: 125,
+    };
+    let res = app.extend_job(request).await;
+
+    assert!(res.is_err());
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_reject_unknown_extension() {
+    let app = spawn_app().await;
+
+    let request = proto::ExtendJobRequest {
+        job_id: 99999,
+        user: TEST_USER.to_string(),
+        extension_mins: 125,
+    };
+    let res = app.extend_job(request).await;
+
+    assert!(res.is_err());
 }
 
 fn get_job_submission() -> proto::JobSubmission {

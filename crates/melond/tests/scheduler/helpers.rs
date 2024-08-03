@@ -12,6 +12,7 @@ use tonic::Response;
 #[derive(Clone, Debug)]
 pub struct TestApp {
     pub address: String,
+    #[allow(dead_code)]
     pub port: u16,
 }
 
@@ -74,6 +75,16 @@ impl TestApp {
         let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
         let request = tonic::Request::new(request);
         let response = client.cancel_job(request).await?;
+        Ok(response)
+    }
+
+    pub async fn extend_job(
+        &self,
+        request: proto::ExtendJobRequest,
+    ) -> Result<tonic::Response<()>, Box<dyn std::error::Error>> {
+        let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
+        let request = tonic::Request::new(request);
+        let response = client.extend_job(request).await?;
         Ok(response)
     }
 }
