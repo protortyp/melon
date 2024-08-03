@@ -13,9 +13,9 @@ use std::error::Error;
 #[derive(Debug, Clone)]
 pub struct CGroups {
     #[cfg(target_os = "linux")]
-    job_id: u64,
+    _job_id: u64,
     #[cfg(target_os = "linux")]
-    cgroup: Option<Cgroup>,
+    _cgroup: Option<Cgroup>,
     #[cfg(not(target_os = "linux"))]
     _cgroup: Option<()>, // dummy field for macos/win
 }
@@ -39,8 +39,8 @@ impl CGroups {
         let cgroup = Self::create_group(job_id, resources)?;
         Self::assign_pid_to_group(&cgroup, pid)?;
         Ok(Self {
-            job_id,
-            cgroup: Some(cgroup),
+            _job_id: job_id,
+            _cgroup: Some(cgroup),
         })
     }
 
