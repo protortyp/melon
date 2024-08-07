@@ -14,4 +14,7 @@ pub struct Args {
     /// The job id
     #[arg()]
     pub job: u64,
+
+    #[arg(long = "parseable")]
+    pub parseable: bool,
 }

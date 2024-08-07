@@ -1115,8 +1115,10 @@ name = "mshow"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "melon-common",
+ "serde_json",
  "tokio",
  "tonic",
 ]

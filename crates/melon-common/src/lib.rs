@@ -4,6 +4,7 @@ use std::time::Instant;
 pub mod configuration;
 pub mod error;
 pub mod telemetry;
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 pub mod proto {
