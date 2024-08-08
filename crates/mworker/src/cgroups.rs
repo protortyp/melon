@@ -51,7 +51,7 @@ impl CGroups {
     pub fn create_group_guard(
         _job_id: u64,
         _pid: u32,
-        _resources: proto::Resources,
+        _resources: proto::RequestedResources,
     ) -> Result<Self, Box<dyn Error>> {
         Ok(Self { cgroup: Some(()) })
     }
