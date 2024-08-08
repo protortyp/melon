@@ -107,8 +107,6 @@ impl Scheduler {
     /// distribution by continuously monitoring the job queue and worker availability.
     #[tracing::instrument(level = "debug", name = "Start up scheduler", skip(self))]
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.init_job_ctr()?;
-
         let scheduler = self.clone();
         let notifier = self.notifier.clone();
 
@@ -259,7 +257,7 @@ impl Scheduler {
 
     #[tracing::instrument(level = "info", name = "Init job counter", skip(self))]
     fn init_job_ctr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let ctr = self.db.get_highest_job_id()?;
+        let ctr = self.db.get_highest_job_id()? + 1;
         log!(debug, "Set job counter to {}", ctr);
         self.job_ctr.store(ctr, std::sync::atomic::Ordering::SeqCst);
         Ok(())
