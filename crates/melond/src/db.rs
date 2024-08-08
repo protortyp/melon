@@ -117,6 +117,7 @@ impl DatabaseHandler {
 fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::error::Error>> {
     let script_args = serde_json::to_string(&job.script_args)?;
     let status = format!("{:?}", job.status);
+    println!("Insert status {}", status);
 
     conn.execute(
         "INSERT INTO jobs \

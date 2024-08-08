@@ -87,6 +87,16 @@ impl TestApp {
         let response = client.extend_job(request).await?;
         Ok(response)
     }
+
+    pub async fn get_job_info(
+        &self,
+        request: proto::GetJobInfoRequest,
+    ) -> Result<tonic::Response<proto::Job>, Box<dyn std::error::Error>> {
+        let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
+        let request = tonic::Request::new(request);
+        let response = client.get_job_info(request).await?;
+        Ok(response)
+    }
 }
 
 fn configure_common_settings(c: &mut Settings) {

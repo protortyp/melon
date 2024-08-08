@@ -221,6 +221,19 @@ impl From<JobStatus> for proto::JobStatus {
     }
 }
 
+impl From<i32> for JobStatus {
+    fn from(value: i32) -> Self {
+        match value {
+            x if x == proto::JobStatus::Completed as i32 => JobStatus::Completed,
+            x if x == proto::JobStatus::Failed as i32 => JobStatus::Failed,
+            x if x == proto::JobStatus::Pending as i32 => JobStatus::Pending,
+            x if x == proto::JobStatus::Running as i32 => JobStatus::Running,
+            x if x == proto::JobStatus::Timeout as i32 => JobStatus::Timeout,
+            _ => panic!("Invalid JobStatus value: {}", value),
+        }
+    }
+}
+
 impl From<proto::JobStatus> for JobStatus {
     fn from(status: proto::JobStatus) -> Self {
         match status {
@@ -229,19 +242,6 @@ impl From<proto::JobStatus> for JobStatus {
             proto::JobStatus::Pending => JobStatus::Pending,
             proto::JobStatus::Running => JobStatus::Running,
             proto::JobStatus::Timeout => JobStatus::Timeout,
-        }
-    }
-}
-
-impl From<i32> for JobStatus {
-    fn from(value: i32) -> Self {
-        match value {
-            0 => JobStatus::Completed,
-            1 => JobStatus::Failed,
-            2 => JobStatus::Pending,
-            3 => JobStatus::Running,
-            4 => JobStatus::Timeout,
-            _ => panic!("Invalid JobStatus value: {}", value),
         }
     }
 }

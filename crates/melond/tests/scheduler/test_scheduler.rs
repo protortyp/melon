@@ -451,6 +451,107 @@ async fn test_reject_unknown_extension() {
     assert!(res.is_err());
 }
 
+#[tokio::test]
+async fn test_mshow_pending() {
+    let app = spawn_app().await;
+    let mock_setup = setup_mock_worker().await;
+    let submission = get_job_submission();
+    let res = app.submit_job(submission.clone()).await.unwrap();
+    let res = res.get_ref();
+    let job_id = res.job_id;
+
+    let request = proto::GetJobInfoRequest { job_id };
+    let res = app.get_job_info(request).await.unwrap();
+    let res = res.get_ref();
+    let job: melon_common::Job = res.into();
+
+    assert_eq!(job.status, JobStatus::Pending);
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mshow_running() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let _ = app.submit_job(submission.clone()).await.unwrap();
+    let job_assignment = mock_setup.job_assignment_receiver.recv().await.unwrap();
+    let job_id = job_assignment.job_id;
+
+    // should be marked as running now
+    let request = proto::GetJobInfoRequest { job_id };
+    let res = app.get_job_info(request).await.unwrap();
+    let res = res.get_ref();
+    let job: melon_common::Job = res.into();
+
+    assert_eq!(job.status, JobStatus::Running);
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mshow_failed() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let _ = app.submit_job(submission.clone()).await.unwrap();
+    let job_assignment = mock_setup.job_assignment_receiver.recv().await.unwrap();
+    let job_id = job_assignment.job_id;
+    let job_result = proto::JobResult {
+        job_id: job_assignment.job_id,
+        status: proto::JobStatus::Failed.into(),
+    };
+    let _ = app.submit_job_result(job_result).await.unwrap();
+
+    // should be marked as failed now
+    let request = proto::GetJobInfoRequest { job_id };
+    let res = app.get_job_info(request).await.unwrap();
+    let res = res.get_ref();
+    let job: melon_common::Job = res.into();
+
+    assert_eq!(job.status, JobStatus::Failed);
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mshow_completed() {
+    let app = spawn_app().await;
+    let mut mock_setup = setup_mock_worker().await;
+    let info = get_node_info(mock_setup.port);
+    app.register_node(info).await.unwrap();
+    let submission = get_job_submission();
+    let _ = app.submit_job(submission.clone()).await.unwrap();
+    let job_assignment = mock_setup.job_assignment_receiver.recv().await.unwrap();
+    let job_id = job_assignment.job_id;
+    let job_result = proto::JobResult {
+        job_id: job_assignment.job_id,
+        status: proto::JobStatus::Completed.into(),
+    };
+    let _ = app.submit_job_result(job_result).await.unwrap();
+
+    // should be marked as completed now
+    let request = proto::GetJobInfoRequest { job_id };
+    let res = app.get_job_info(request).await.unwrap();
+    let res = res.get_ref();
+    let job: melon_common::Job = res.into();
+
+    println!("Job {:?}", job);
+
+    assert_eq!(job.status, JobStatus::Completed);
+
+    mock_setup.server_notifier.send(()).unwrap();
+    mock_setup.server_handle.await.unwrap();
+}
+
 fn get_job_submission() -> proto::JobSubmission {
     proto::JobSubmission {
         user: TEST_USER.to_string(),
