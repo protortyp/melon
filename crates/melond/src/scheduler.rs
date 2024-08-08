@@ -82,8 +82,14 @@ impl Scheduler {
         let db_writer = Arc::new(db_writer);
         let db_tx = Arc::new(db_tx);
 
+        let highest_job_id = db_writer
+            .get_highest_job_id()
+            .expect("Could not get highest job ID from database");
+
+        let job_ctr = Arc::new(AtomicU64::new(highest_job_id + 1));
+
         Self {
-            job_ctr: Arc::new(AtomicU64::new(0)),
+            job_ctr,
             nodes: Arc::new(Mutex::new(HashMap::new())),
             running_jobs: Arc::new(Mutex::new(HashMap::new())),
             pending_jobs: Arc::new(Mutex::new(VecDeque::new())),
