@@ -71,6 +71,10 @@ impl Job {
     }
 }
 
+impl From<&proto::Job> for Job {
+    
+}
+
 impl From<&Job> for proto::Job {
     fn from(job: &Job) -> Self {
         proto::Job {
