@@ -1,4 +1,5 @@
 use crate::db::DatabaseHandler;
+use crate::settings::Settings;
 use melon_common::proto::melon_scheduler_server::MelonScheduler;
 use melon_common::proto::melon_worker_client::MelonWorkerClient;
 use melon_common::utils::get_current_timestamp;
@@ -71,11 +72,12 @@ impl Drop for Scheduler {
     }
 }
 
-impl Default for Scheduler {
-    fn default() -> Self {
+impl Scheduler {
+    pub fn new(settings: &Settings) -> Self {
         // Spawn Database Writer
         let (db_tx, db_rx) = mpsc::channel::<Job>(100);
-        let mut db_writer = DatabaseHandler::new(db_rx).expect("Could not init database write");
+        let mut db_writer =
+            DatabaseHandler::new(db_rx, &settings.database).expect("Could not init database write");
         db_writer.run().expect("Could not start database writer");
         let db_writer = Arc::new(db_writer);
         let db_tx = Arc::new(db_tx);
@@ -93,9 +95,7 @@ impl Default for Scheduler {
             db_tx,
         }
     }
-}
 
-impl Scheduler {
     /// Starts a dedicated task that periodically scans for pending jobs
     /// and assigns them to available workers. This function ensures efficient job
     /// distribution by continuously monitoring the job queue and worker availability.
@@ -373,9 +373,10 @@ impl MelonScheduler for Scheduler {
             // send the finished job to the database writer for permanent storage
             job.stop_time = Some(get_current_timestamp());
             job.status = result.status;
+
             let tx = self.db_tx.clone();
             // FIXME: hardcoded timeout
-            if let Err(e) = tx.send_timeout(job, Duration::from_millis(100)).await {
+            if let Err(e) = tx.send(job).await {
                 log!(
                     error,
                     "Could not send job {} to database writer: {}",

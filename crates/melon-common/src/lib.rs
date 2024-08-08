@@ -221,6 +221,13 @@ impl From<JobStatus> for proto::JobStatus {
     }
 }
 
+impl From<JobStatus> for i32 {
+    fn from(status: JobStatus) -> Self {
+        let status = proto::JobStatus::from(status);
+        status.into()
+    }
+}
+
 impl From<i32> for JobStatus {
     fn from(value: i32) -> Self {
         match value {
@@ -242,19 +249,6 @@ impl From<proto::JobStatus> for JobStatus {
             proto::JobStatus::Pending => JobStatus::Pending,
             proto::JobStatus::Running => JobStatus::Running,
             proto::JobStatus::Timeout => JobStatus::Timeout,
-        }
-    }
-}
-
-impl From<String> for JobStatus {
-    fn from(value: String) -> Self {
-        match value.to_lowercase().as_str() {
-            "completed" => JobStatus::Completed,
-            "pending" => JobStatus::Pending,
-            "running" => JobStatus::Running,
-            "timeout" => JobStatus::Timeout,
-            "failed" => JobStatus::Failed,
-            _ => JobStatus::Failed,
         }
     }
 }

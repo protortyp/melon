@@ -32,8 +32,7 @@ impl Application {
             settings.application.host,
             port
         );
-
-        let mut scheduler = Scheduler::default();
+        let mut scheduler = Scheduler::new(&settings);
         scheduler
             .start()
             .await

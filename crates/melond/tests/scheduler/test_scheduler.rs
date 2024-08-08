@@ -6,6 +6,7 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self};
 use tokio::sync::watch;
 use tonic::transport::Server;
+use tonic::Status;
 
 const TEST_MEMORY_SIZE: u64 = 2 * 1024 * 1024;
 const TEST_COU_COUNT: u32 = 1;
@@ -544,12 +545,29 @@ async fn test_mshow_completed() {
     let res = res.get_ref();
     let job: melon_common::Job = res.into();
 
-    println!("Job {:?}", job);
-
     assert_eq!(job.status, JobStatus::Completed);
 
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mshow_unknown_id() {
+    let app = spawn_app().await;
+
+    // should be marked as completed now
+    let request = proto::GetJobInfoRequest { job_id: 10 };
+    let res = app.get_job_info(request).await;
+
+    assert!(res.is_err());
+    if let Err(e) = res {
+        if let Some(status) = e.downcast_ref::<Status>() {
+            assert_eq!(status.code(), tonic::Code::NotFound);
+            assert_eq!(status.message(), "Job ID not found 10");
+        } else {
+            panic!("Error is not a tonic::Status: {:?}", e);
+        }
+    }
 }
 
 fn get_job_submission() -> proto::JobSubmission {

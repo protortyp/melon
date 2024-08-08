@@ -4,11 +4,12 @@ use melon_common::{
     log,
     telemetry::{get_subscriber, init_subscriber},
 };
-use melond::application::Application;
+use melond::{application::Application, db::get_prod_database_path, settings::Settings};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let settings = get_configuration().expect("Failed to read configuration.");
+    let mut settings: Settings = get_configuration().expect("Failed to read configuration.");
+    settings.database.path = get_prod_database_path();
 
     let subscriber = get_subscriber("melond".into(), "info".into(), std::io::stdout);
     init_subscriber(subscriber);

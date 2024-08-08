@@ -9,6 +9,8 @@ use tokio::{
     task::JoinHandle,
 };
 
+use crate::settings::DatabaseSettings;
+
 /// Dedicated Database Reader and Writer
 ///
 /// Receives finished [Job]s from the Scheduler and writes them to the database.
@@ -23,15 +25,22 @@ pub struct DatabaseHandler {
 
     /// Thread Shutdown Notifier
     notifier: Arc<Notify>,
+
+    /// Database Path
+    db_path: String,
 }
 
 impl DatabaseHandler {
     #[tracing::instrument(level = "debug", name = "Create new DatabaseWriter", skip(rx))]
-    pub fn new(rx: mpsc::Receiver<Job>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        rx: mpsc::Receiver<Job>,
+        settings: &DatabaseSettings,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             rx: Arc::new(Mutex::new(rx)),
             notifier: Arc::new(Notify::new()),
             handle: None,
+            db_path: settings.path.clone(),
         })
     }
 
@@ -44,7 +53,7 @@ impl DatabaseHandler {
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let notifier = self.notifier.clone();
         let rx = self.rx.clone();
-        let conn = initialize_database()?;
+        let conn = initialize_database(&self.db_path)?;
         let conn = Arc::new(Mutex::new(conn));
 
         let handle = tokio::spawn(async move {
@@ -78,7 +87,7 @@ impl DatabaseHandler {
 
     #[tracing::instrument(level = "debug", name = "Get job from database", skip(self), fields(job_id = %job_id))]
     pub fn get_job_opt(&self, job_id: u64) -> Result<Option<Job>, Box<dyn std::error::Error>> {
-        let conn = Connection::open(get_database_path().ok_or("Failed to get database path")?)?;
+        let conn = Connection::open(self.db_path.clone())?;
 
         let mut stmt = conn.prepare("SELECT * FROM jobs WHERE id = ?")?;
         let mut job_iter = stmt.query_map(params![job_id], |row| {
@@ -95,7 +104,7 @@ impl DatabaseHandler {
                 submit_time: row.get(7)?,
                 start_time: row.get(8)?,
                 stop_time: row.get(9)?,
-                status: JobStatus::from(row.get::<_, String>(10)?),
+                status: JobStatus::from(row.get::<_, i32>(10)?),
                 assigned_node: row.get(11)?,
             })
         })?;
@@ -104,7 +113,7 @@ impl DatabaseHandler {
     }
 
     pub fn get_highest_job_id(&self) -> Result<u64, Box<dyn std::error::Error>> {
-        let conn = Connection::open(get_database_path().ok_or("Failed to get database path")?)?;
+        let conn = Connection::open(self.db_path.clone())?;
 
         let mut stmt = conn.prepare("SELECT MAX(id) FROM jobs")?;
         let max_id: Option<u64> = stmt.query_row([], |row| row.get(0))?;
@@ -116,8 +125,7 @@ impl DatabaseHandler {
 #[tracing::instrument(level = "debug", name = "Insert finished job", skip(conn, job), fields(job_id = %job.id))]
 fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::error::Error>> {
     let script_args = serde_json::to_string(&job.script_args)?;
-    let status = format!("{:?}", job.status);
-    println!("Insert status {}", status);
+    let status: i32 = job.status.clone().into();
 
     conn.execute(
         "INSERT INTO jobs \
@@ -142,18 +150,9 @@ fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::
     Ok(())
 }
 
-fn get_database_path() -> Option<PathBuf> {
-    if let Some(proj_dirs) = ProjectDirs::from("com", "MelonOrganization", "Melon") {
-        let data_dir = proj_dirs.data_dir();
-        Some(data_dir.join("melon.db"))
-    } else {
-        None
-    }
-}
-
 #[tracing::instrument(level = "debug", name = "Initialise database")]
-fn initialize_database() -> Result<Connection, Box<dyn std::error::Error>> {
-    let db_path = get_database_path().ok_or("Failed to get database path")?;
+fn initialize_database(db_path: &str) -> Result<Connection, Box<dyn std::error::Error>> {
+    let db_path = PathBuf::from(db_path);
 
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -173,11 +172,22 @@ fn initialize_database() -> Result<Connection, Box<dyn std::error::Error>> {
             submit_time INTEGER NOT NULL,
             start_time INTEGER,
             stop_time INTEGER NOT NULL,
-            status TEXT NOT NULL,
+            status INTEGER NOT NULL,
             assigned_node TEXT
             )",
         [],
     )?;
 
     Ok(conn)
+}
+
+/// Get the path to the production databse
+pub fn get_prod_database_path() -> String {
+    let proj_dirs = ProjectDirs::from("com", "MelonOrganization", "Melon")
+        .expect("Could not build database path");
+    let data_dir = proj_dirs.data_dir();
+    let path = data_dir.join("melon.db");
+    path.to_str()
+        .expect("Path contains invalid Unicode")
+        .to_string()
 }

@@ -23,6 +23,7 @@ tokio-stream =  { workspace = true }
 tempdir = { workspace = true }
 assert_cmd = {workspace = true}
 predicates = {workspace = true}
+uuid = {workspace = true}
 
 [lib]
 name = "melond"
