@@ -18,8 +18,8 @@ Components that have been implemented so far:
 - [x] `mqueue` see pending and running jobs
 - [x] `mcancel` the cancel command
 - [x] `mextend` to extend jobs
+- [ ] `mshow` a better job info command
 - [ ] `mstat` the job status commands
-- [ ] `minfo` the job info command
 
 **Stuff that's missing:**
 

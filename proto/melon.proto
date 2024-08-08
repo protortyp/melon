@@ -24,7 +24,7 @@ service MelonWorker {
 message JobSubmission {
   string script_path = 1;
   string user = 2;
-  Resources req_res = 3;
+  RequestedResources req_res = 3;
   repeated string script_args = 4;
 }
 
@@ -32,14 +32,8 @@ message JobAssignment {
   uint64 job_id = 1;
   string script_path = 2;
   string user = 3;
-  Resources req_res = 4;
+  RequestedResources req_res = 4;
   repeated string script_args = 5;
-}
-
-message Resources {
-  uint32 cpu_count = 1;
-  uint64 memory = 2;      // in bytes
-  uint32 time = 3;        // in minutes
 }
 
 // returned by the master node
@@ -77,7 +71,6 @@ message HeartbeatResponse {
 message JobResult {
   uint64 job_id = 1;
   JobStatus status = 2;
-  string message = 3; // optional
 }
 
 enum JobStatus {
@@ -96,16 +89,7 @@ message JobListRequest {
 }
 
 message JobListResponse {
-  repeated JobInfo jobs = 1;
-}
-
-message JobInfo {
-  uint64 job_id = 1;
-  string name = 2;      // name of the script
-  string user = 3;      // the user that submitted the job
-  string status = 4;    // status
-  string time = 5;      // time since the job started, or "PD"
-  string nodes = 6;     // which node id was assigned, or (none)
+  repeated Job jobs = 1;
 }
 
 message CancelJobRequest {
@@ -129,9 +113,9 @@ message Job {
   string script_path = 3;
   repeated string script_args = 4;
   RequestedResources req_res = 5;
-  string submit_time = 6;
-  string start_time = 7;
-  string stop_time = 8;
+  uint64 submit_time = 6;
+  optional uint64 start_time = 7;
+  optional uint64 stop_time = 8;
   JobStatus status = 9;
   string assigned_node = 10;
 }

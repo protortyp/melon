@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = JobSubmission {
         user: whoami::username(),
         script_path: args.script,
-        req_res: Some(res),
+        req_res: Some(res.into()),
         script_args: args.script_args,
     };
     let request = tonic::Request::new(req);

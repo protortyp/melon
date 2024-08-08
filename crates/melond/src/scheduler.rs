@@ -1,7 +1,7 @@
 use crate::db::DatabaseHandler;
-use chrono::Utc;
 use melon_common::proto::melon_scheduler_server::MelonScheduler;
 use melon_common::proto::melon_worker_client::MelonWorkerClient;
+use melon_common::utils::get_current_timestamp;
 use melon_common::{log, proto, JobResult, JobStatus, RequestedResources};
 use melon_common::{Job, Node, NodeStatus};
 use nanoid::nanoid;
@@ -150,7 +150,7 @@ impl Scheduler {
                         let mut running_jobs = scheduler.running_jobs.lock().await;
                         for index in to_remove.iter().rev() {
                             let mut job = pending_jobs.remove(*index).expect("Job should exist");
-                            job.start_time = Some(Utc::now());
+                            job.start_time = Some(get_current_timestamp());
                             job.status = JobStatus::Running;
                             let job_id = job.id;
 
@@ -275,7 +275,7 @@ impl MelonScheduler for Scheduler {
             .job_ctr
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let res = sub.req_res.expect("No resources given");
-        let resources = RequestedResources::from_proto(res);
+        let resources = res.into();
         let new_job = Job::new(
             job_id,
             sub.user.clone(),
@@ -303,8 +303,7 @@ impl MelonScheduler for Scheduler {
     ) -> Result<tonic::Response<proto::RegistrationResponse>, tonic::Status> {
         let req = request.get_ref();
         let resources = req.resources.unwrap();
-        let resources =
-            melon_common::NodeResources::new(resources.cpu_count as u8, resources.memory);
+        let resources = melon_common::NodeResources::new(resources.cpu_count, resources.memory);
 
         let id = nanoid!();
         let node = Node::new(
@@ -372,7 +371,7 @@ impl MelonScheduler for Scheduler {
             let mut job = jobs.remove(&job_id).unwrap();
 
             // send the finished job to the database writer for permanent storage
-            job.stop_time = Some(Utc::now());
+            job.stop_time = Some(get_current_timestamp());
             job.status = result.status;
             let tx = self.db_tx.clone();
             // FIXME: hardcoded timeout
@@ -404,10 +403,9 @@ impl MelonScheduler for Scheduler {
         let running_jobs = self.running_jobs.lock().await;
 
         // accumulate pending jobs
-        let mut job_infos: Vec<proto::JobInfo> =
-            pending_jobs.iter().map(|j| j.clone().into()).collect();
-        job_infos.extend(running_jobs.values().map(|j| j.clone().into()));
-        let response = proto::JobListResponse { jobs: job_infos };
+        let mut jobs: Vec<proto::Job> = pending_jobs.iter().map(|j| j.into()).collect();
+        jobs.extend(running_jobs.values().map(|j| j.into()));
+        let response = proto::JobListResponse { jobs };
         let response = tonic::Response::new(response);
         Ok(response)
     }
@@ -463,7 +461,7 @@ impl MelonScheduler for Scheduler {
                 client.cancel_job(worker_request).await?;
 
                 // free up the node resources to mark availability
-                let res = job.req_res.clone();
+                let res = job.req_res;
                 node.free_avail_resource(&res);
             }
 

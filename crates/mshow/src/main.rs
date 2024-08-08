@@ -1,8 +1,8 @@
 mod arg;
 use arg::Args;
-use chrono::NaiveDateTime;
 use clap::Parser;
 use melon_common::proto::{self, melon_scheduler_client::MelonSchedulerClient};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,16 +32,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_job_json(job: &proto::Job) -> Result<(), Box<dyn std::error::Error>> {
     let job: melon_common::Job = job.into();
-
-    let json = serde_json::to_string_pretty(job)?;
+    let json = serde_json::to_string_pretty(&job)?;
     println!("{}", json);
     Ok(())
 }
 
 fn print_job_info(job: &proto::Job) {
     println!(
-        "{:<5} {:<20} {:<10} {:<20} {:<20} {}",
-        "JOBID", "NAME", "USER", "STATUS", "TIME", "NODES"
+        "{:<5} {:<20} {:<10} {:<20} {:<20} NODES",
+        "JOBID", "NAME", "USER", "STATUS", "TIME"
     );
 
     let status = match job.status {
@@ -82,23 +81,34 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
 }
 
 fn calculate_elapsed_time(job: &proto::Job) -> String {
-    let start = NaiveDateTime::parse_from_str(&job.start_time, "%H-%M-%S").unwrap_or_default();
-    let stop = NaiveDateTime::parse_from_str(&job.stop_time, "%H-%M-%S").unwrap_or_default();
+    let start = job.start_time.map(|t| UNIX_EPOCH + Duration::from_secs(t));
+    let stop = job.stop_time.map(|t| UNIX_EPOCH + Duration::from_secs(t));
+    let now = SystemTime::now();
 
-    let duration = if job.status == 2 {
-        // Completed
-        stop - start
-    } else if job.status == 1 {
-        // Running
-        chrono::Local::now().naive_local() - start
-    } else {
-        chrono::Local::now().naive_local() - start
+    let duration = match job.status {
+        2 => {
+            // Completed
+            match (start, stop) {
+                (Some(s), Some(e)) => e.duration_since(s).unwrap_or_default(),
+                _ => Duration::default(),
+            }
+        }
+        1 => {
+            // Running
+            match start {
+                Some(s) => now.duration_since(s).unwrap_or_default(),
+                None => Duration::default(),
+            }
+        }
+        _ => {
+            // Pending or any other status
+            Duration::default()
+        }
     };
 
-    format!(
-        "{}-{:02}-{:02}",
-        duration.num_days(),
-        duration.num_hours() % 24,
-        duration.num_minutes() % 60
-    )
+    let days = duration.as_secs() / 86400;
+    let hours = (duration.as_secs() % 86400) / 3600;
+    let minutes = (duration.as_secs() % 3600) / 60;
+
+    format!("{}-{:02}-{:02}", days, hours, minutes)
 }

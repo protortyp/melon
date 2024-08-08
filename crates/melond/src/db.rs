@@ -120,8 +120,8 @@ fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::
 
     conn.execute(
         "INSERT INTO jobs \
-         (id, user, script_path, script_args, cpu_count, memory, time, submit_time, start_time, stop_time, status, assigned_node, exit_message) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+         (id, user, script_path, script_args, cpu_count, memory, time, submit_time, start_time, stop_time, status, assigned_node) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             job.id,
             job.user,
@@ -130,15 +130,11 @@ fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::
             job.req_res.cpu_count,
             job.req_res.memory,
             job.req_res.time,
-            job.submit_time.to_rfc3339(),
-            job.start_time.map(|t| t.to_rfc3339()),
-            job.stop_time.expect("No stop time set").to_rfc3339(),
+            job.submit_time,
+            job.start_time,
+            job.stop_time.expect("No stop time set"),
             status,
             job.assigned_node,
-            match &job.status {
-                JobStatus::Failed(msg) => Some(msg),
-                _ => None,
-            },
         ],
     )?;
 
@@ -173,12 +169,11 @@ fn initialize_database() -> Result<Connection, Box<dyn std::error::Error>> {
             cpu_count INTEGER NOT NULL,
             memory INTEGER NOT NULL,
             time INTEGER NOT NULL,
-            submit_time TEXT NOT NULL,
-            start_time TEXT,
-            stop_time TEXT NOT NULL,
+            submit_time INTEGER NOT NULL,
+            start_time INTEGER,
+            stop_time INTEGER NOT NULL,
             status TEXT NOT NULL,
-            assigned_node TEXT,
-            exit_message TEXT
+            assigned_node TEXT
             )",
         [],
     )?;

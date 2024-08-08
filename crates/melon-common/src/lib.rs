@@ -1,17 +1,17 @@
-use chrono::{DateTime, Utc};
-use proto::{JobAssignment, JobSubmission};
+use proto::JobSubmission;
 use std::time::Instant;
+use utils::get_current_timestamp;
 pub mod configuration;
 pub mod error;
 pub mod telemetry;
-use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+pub mod utils;
 
 pub mod proto {
     tonic::include_proto!("melon");
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Job {
     /// The unique ID, created by the scheduler
     pub id: u64,
@@ -29,13 +29,13 @@ pub struct Job {
     pub req_res: RequestedResources,
 
     /// The time the job was submitted
-    pub submit_time: DateTime<Utc>,
+    pub submit_time: u64,
 
     /// Start time
-    pub start_time: Option<DateTime<Utc>>,
+    pub start_time: Option<u64>,
 
     /// Stop time
-    pub stop_time: Option<DateTime<Utc>>,
+    pub stop_time: Option<u64>,
 
     /// The job status
     pub status: JobStatus,
@@ -58,7 +58,7 @@ impl Job {
             script_path,
             script_args,
             req_res,
-            submit_time: Utc::now(),
+            submit_time: get_current_timestamp(),
             start_time: None,
             stop_time: None,
             status: JobStatus::Pending,
@@ -71,33 +71,40 @@ impl Job {
     }
 }
 
-impl From<&proto::Job> for Job {
-    
-}
-
 impl From<&Job> for proto::Job {
     fn from(job: &Job) -> Self {
         proto::Job {
             id: job.id,
             user: job.user.clone(),
             script_path: job.script_path.clone(),
-            script_args: job.script_args.clone(),
-            req_res: Some(proto::RequestedResources {
-                cpu_count: job.req_res.cpu_count as u32,
-                memory: job.req_res.memory,
-                time: job.req_res.time,
-            }),
-            submit_time: format_time(&job.submit_time),
-            start_time: job.start_time.map_or("".to_string(), |t| format_time(&t)),
-            stop_time: job.stop_time.map_or("".to_string(), |t| format_time(&t)),
-            status: match job.status {
-                JobStatus::Pending => proto::JobStatus::Pending as i32,
-                JobStatus::Running => proto::JobStatus::Running as i32,
-                JobStatus::Completed => proto::JobStatus::Completed as i32,
-                JobStatus::Failed(_) => proto::JobStatus::Failed as i32,
-                JobStatus::Timeout => proto::JobStatus::Timeout as i32,
-            },
+            script_args: job.script_args.clone().into_iter().collect(),
+            req_res: Some(job.req_res.into()),
+            submit_time: job.submit_time,
+            start_time: job.start_time,
+            stop_time: job.stop_time,
+            status: proto::JobStatus::from(job.status.clone()).into(),
             assigned_node: job.assigned_node.clone().unwrap_or_default(),
+        }
+    }
+}
+
+impl From<&proto::Job> for Job {
+    fn from(job: &proto::Job) -> Self {
+        Job {
+            id: job.id,
+            user: job.user.clone(),
+            script_path: job.script_path.clone(),
+            script_args: job.script_args.clone().into_iter().collect(),
+            req_res: job.req_res.unwrap().into(),
+            submit_time: job.submit_time,
+            start_time: job.start_time,
+            stop_time: job.stop_time,
+            status: JobStatus::from(job.status()),
+            assigned_node: if job.assigned_node.is_empty() {
+                None
+            } else {
+                Some(job.assigned_node.clone())
+            },
         }
     }
 }
@@ -107,54 +114,68 @@ impl From<&mut Job> for JobSubmission {
         JobSubmission {
             user: val.user.clone(),
             script_path: val.script_path.clone(),
-            req_res: Some(val.req_res.to_resources()),
+            req_res: Some(val.req_res.into()),
             script_args: val.script_args.clone(),
         }
     }
 }
 
-impl From<&mut Job> for JobAssignment {
+impl From<&mut Job> for proto::JobAssignment {
     fn from(val: &mut Job) -> Self {
-        JobAssignment {
+        proto::JobAssignment {
             job_id: val.id,
             user: val.user.clone(),
             script_path: val.script_path.clone(),
-            req_res: Some(val.req_res.to_resources()),
+            req_res: Some(val.req_res.into()),
             script_args: val.script_args.clone(),
         }
     }
 }
 
 /// Requested resources for a job.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy, Deserialize, Serialize)]
 pub struct RequestedResources {
-    pub cpu_count: u8,
+    pub cpu_count: u32,
     pub memory: u64,
     pub time: u32,
 }
 
+impl From<RequestedResources> for proto::RequestedResources {
+    fn from(req_res: RequestedResources) -> Self {
+        proto::RequestedResources {
+            cpu_count: req_res.cpu_count,
+            memory: req_res.memory,
+            time: req_res.time,
+        }
+    }
+}
+
+impl From<&mut RequestedResources> for proto::RequestedResources {
+    fn from(req_res: &mut RequestedResources) -> Self {
+        proto::RequestedResources {
+            cpu_count: req_res.cpu_count,
+            memory: req_res.memory,
+            time: req_res.time,
+        }
+    }
+}
+
+impl From<proto::RequestedResources> for RequestedResources {
+    fn from(res: proto::RequestedResources) -> Self {
+        RequestedResources {
+            cpu_count: res.cpu_count,
+            memory: res.memory,
+            time: res.time,
+        }
+    }
+}
+
 impl RequestedResources {
-    pub fn new(cpu_count: u8, memory: u64, time: u32) -> Self {
+    pub fn new(cpu_count: u32, memory: u64, time: u32) -> Self {
         Self {
             cpu_count,
             memory,
             time,
-        }
-    }
-
-    pub fn from_proto(proto: proto::Resources) -> Self {
-        Self {
-            cpu_count: proto.cpu_count as u8,
-            memory: proto.memory,
-            time: proto.time,
-        }
-    }
-
-    pub fn to_resources(&self) -> proto::Resources {
-        proto::Resources {
-            cpu_count: self.cpu_count as u32,
-            memory: self.memory,
-            time: self.time,
         }
     }
 }
@@ -162,12 +183,12 @@ impl RequestedResources {
 /// Available Resources on a worker node.
 #[derive(Clone, Debug)]
 pub struct NodeResources {
-    pub cpu_count: u8,
+    pub cpu_count: u32,
     pub memory: u64,
 }
 
 impl NodeResources {
-    pub fn new(cpu_count: u8, memory: u64) -> Self {
+    pub fn new(cpu_count: u32, memory: u64) -> Self {
         Self { cpu_count, memory }
     }
 
@@ -179,13 +200,50 @@ impl NodeResources {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum JobStatus {
     Completed,
-    Failed(String),
+    Failed,
     Pending,
     Running,
     Timeout,
+}
+
+impl From<JobStatus> for proto::JobStatus {
+    fn from(status: JobStatus) -> Self {
+        match status {
+            JobStatus::Completed => proto::JobStatus::Completed,
+            JobStatus::Failed => proto::JobStatus::Failed,
+            JobStatus::Pending => proto::JobStatus::Pending,
+            JobStatus::Running => proto::JobStatus::Running,
+            JobStatus::Timeout => proto::JobStatus::Timeout,
+        }
+    }
+}
+
+impl From<proto::JobStatus> for JobStatus {
+    fn from(status: proto::JobStatus) -> Self {
+        match status {
+            proto::JobStatus::Completed => JobStatus::Completed,
+            proto::JobStatus::Failed => JobStatus::Failed,
+            proto::JobStatus::Pending => JobStatus::Pending,
+            proto::JobStatus::Running => JobStatus::Running,
+            proto::JobStatus::Timeout => JobStatus::Timeout,
+        }
+    }
+}
+
+impl From<i32> for JobStatus {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => JobStatus::Completed,
+            1 => JobStatus::Failed,
+            2 => JobStatus::Pending,
+            3 => JobStatus::Running,
+            4 => JobStatus::Timeout,
+            _ => panic!("Invalid JobStatus value: {}", value),
+        }
+    }
 }
 
 impl From<String> for JobStatus {
@@ -195,14 +253,8 @@ impl From<String> for JobStatus {
             "pending" => JobStatus::Pending,
             "running" => JobStatus::Running,
             "timeout" => JobStatus::Timeout,
-            s if s.starts_with("failed") => {
-                let error_message = s
-                    .strip_prefix("failed")
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "Unknown error".to_string());
-                JobStatus::Failed(error_message)
-            }
-            _ => JobStatus::Failed("Unknown status".to_string()),
+            "failed" => JobStatus::Failed,
+            _ => JobStatus::Failed,
         }
     }
 }
@@ -285,86 +337,28 @@ impl JobResult {
 }
 
 impl From<JobResult> for proto::JobResult {
-    fn from(value: JobResult) -> Self {
-        let (status, message) = match value.status {
-            JobStatus::Completed => (0, String::new()),
-            JobStatus::Failed(msg) => (1, msg),
-            JobStatus::Pending => (2, String::new()),
-            JobStatus::Running => (3, String::new()),
-            JobStatus::Timeout => (4, "Timd Out".to_string()),
-        };
+    fn from(result: JobResult) -> Self {
+        proto::JobResult {
+            job_id: result.id,
+            status: (proto::JobStatus::from(result.status)).into(),
+        }
+    }
+}
 
-        Self {
-            job_id: value.id,
-            status,
-            message,
+impl From<proto::JobResult> for JobResult {
+    fn from(result: proto::JobResult) -> Self {
+        JobResult {
+            id: result.job_id,
+            status: JobStatus::from(result.status),
         }
     }
 }
 
 impl From<&proto::JobResult> for JobResult {
-    fn from(value: &proto::JobResult) -> Self {
-        let status = match value.status {
-            0 => JobStatus::Completed,
-            1 => JobStatus::Failed(value.message.clone()),
-            2 => JobStatus::Pending,
-            3 => JobStatus::Running,
-            4 => JobStatus::Timeout,
-            _ => panic!("Unknown status"),
-        };
-
+    fn from(result: &proto::JobResult) -> Self {
         JobResult {
-            id: value.job_id,
-            status,
+            id: result.job_id,
+            status: JobStatus::from(result.status),
         }
     }
-}
-
-impl From<Job> for proto::JobInfo {
-    fn from(job: Job) -> Self {
-        let run_time = if let Some(start) = job.start_time {
-            let elapsed = Utc::now().signed_duration_since(start);
-            let days = elapsed.num_days();
-            let hours = elapsed.num_hours() % 24;
-            let mut minutes = elapsed.num_minutes() % 60;
-            if minutes == 0 && (days > 0 || hours > 0) {
-                minutes = 1;
-            }
-            format!("{}-{:02}-{:02}", days, hours, minutes)
-        } else {
-            "0-00-00".to_string()
-        };
-
-        let nodes = if let Some(node) = job.assigned_node {
-            node
-        } else {
-            "(PD)".to_string()
-        };
-
-        let status = match job.status {
-            JobStatus::Pending => "PD".to_string(),
-            JobStatus::Running => "R".to_string(),
-            _ => unreachable!(),
-        };
-
-        Self {
-            job_id: job.id,
-            user: job.user.clone(),
-            name: job.script_path.clone(),
-            status,
-            time: run_time,
-            nodes,
-        }
-    }
-}
-
-fn format_time(time: &DateTime<Utc>) -> String {
-    let now = Utc::now();
-    let duration = now.signed_duration_since(*time);
-
-    let days = duration.num_days();
-    let hours = duration.num_hours() % 24;
-    let minutes = duration.num_minutes() % 60;
-
-    format!("{}-{:02}-{:02}", days, hours, minutes)
 }

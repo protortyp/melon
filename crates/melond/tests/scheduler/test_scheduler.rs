@@ -1,7 +1,7 @@
 use crate::helpers::{get_node_info, spawn_app};
 use crate::mock_worker::MockWorker;
-use melon_common::proto;
 use melon_common::proto::melon_worker_server::MelonWorkerServer;
+use melon_common::{proto, JobStatus};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self};
 use tokio::sync::watch;
@@ -60,9 +60,9 @@ async fn test_list_pending_job() {
     let res = res.get_ref();
     let first_job = res.jobs.first().unwrap();
 
-    assert_eq!(first_job.job_id, job_id);
+    assert_eq!(first_job.id, job_id);
     assert_eq!(first_job.user, submission.user);
-    assert_eq!(first_job.status, "PD".to_string());
+    assert_eq!(JobStatus::from(first_job.status), JobStatus::Pending);
 }
 
 #[tokio::test]
@@ -81,9 +81,9 @@ async fn test_list_running_job() {
     let res = res.get_ref();
     let first_job = res.jobs.first().unwrap();
 
-    assert_eq!(first_job.job_id, job_id);
+    assert_eq!(first_job.id, job_id);
     assert_eq!(first_job.user, submission.user);
-    assert_eq!(first_job.status, "R".to_string());
+    assert_eq!(JobStatus::from(first_job.status), JobStatus::Running);
 
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
@@ -173,7 +173,6 @@ async fn test_submit_job_results() {
     let job_result = proto::JobResult {
         job_id: job_assignment.job_id,
         status: 1,
-        message: "".to_string(),
     };
     let res = app.submit_job_result(job_result).await;
     assert!(res.is_ok());
@@ -195,7 +194,6 @@ async fn test_submit_job_fails_for_unknown_id() {
     let job_result = proto::JobResult {
         job_id: 99999999,
         status: 1,
-        message: "".to_string(),
     };
     let res = app.submit_job_result(job_result).await;
     assert!(res.is_err());
@@ -457,7 +455,7 @@ fn get_job_submission() -> proto::JobSubmission {
     proto::JobSubmission {
         user: TEST_USER.to_string(),
         script_path: TEST_SCRIPT_PATH.to_string(),
-        req_res: Some(proto::Resources {
+        req_res: Some(proto::RequestedResources {
             cpu_count: TEST_COU_COUNT,
             memory: TEST_MEMORY_SIZE,
             time: TEST_TIME_MINS,
