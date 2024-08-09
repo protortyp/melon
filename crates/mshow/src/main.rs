@@ -1,7 +1,13 @@
 mod arg;
 use arg::Args;
+use chrono::{TimeZone, Utc};
 use clap::Parser;
-use melon_common::proto::{self, melon_scheduler_client::MelonSchedulerClient};
+use colored::*;
+use melon_common::{
+    proto::{self, melon_scheduler_client::MelonSchedulerClient},
+    JobStatus,
+};
+use prettytable::{Cell, Row, Table};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[tokio::main]
@@ -38,20 +44,24 @@ fn print_job_json(job: &proto::Job) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_job_info(job: &proto::Job) {
-    println!(
-        "{:<5} {:<20} {:<10} {:<20} {:<20} NODES",
-        "JOBID", "NAME", "USER", "STATUS", "TIME"
-    );
+    let mut table = Table::new();
 
-    let status = match job.status {
-        0 => "PD",
-        1 => "R ",
-        2 => "CO",
-        _ => "UK",
-    };
+    // Add headers
+    table.add_row(Row::new(vec![
+        Cell::new("JOBID"),
+        Cell::new("NAME"),
+        Cell::new("USER"),
+        Cell::new("STATUS"),
+        Cell::new("SUBMIT DATE"),
+        Cell::new("START DATE"),
+        Cell::new("STOP DATE"),
+        Cell::new("NODES"),
+    ]));
 
-    let elapsed_time = calculate_elapsed_time(job);
-    let node = if status == "PD" {
+    let job_status = JobStatus::from(job.status);
+    let status: String = job_status.clone().into();
+
+    let node = if job_status == JobStatus::Pending {
         "(PD)".to_string()
     } else {
         job.assigned_node.clone()
@@ -62,14 +72,24 @@ fn print_job_info(job: &proto::Job) {
         .split('/')
         .last()
         .unwrap_or(&job.script_path);
-    let truncated_script_name = truncate_str(script_name, 18);
-    let truncated_user = truncate_str(&job.user, 8);
-    let truncated_node = truncate_str(&node, 20);
 
-    println!(
-        "{:<5} {:<20} {:<10} {:<20} {:<20} {}",
-        job.id, truncated_script_name, truncated_user, status, elapsed_time, truncated_node
-    );
+    // Add job data
+    table.add_row(Row::new(vec![
+        Cell::new(&job.id.to_string()),
+        Cell::new(truncate_str(script_name, 15).as_str()),
+        Cell::new(&job.user),
+        Cell::new(&status),
+        Cell::new(&format_timestamp(Some(job.submit_time))),
+        Cell::new(&format_timestamp(job.start_time)),
+        Cell::new(&format_timestamp(job.stop_time)),
+        Cell::new(&node),
+    ]));
+
+    // Set table formatting
+    table.set_format(*prettytable::format::consts::FORMAT_CLEAN);
+
+    // Print the table
+    table.printstd();
 }
 
 fn truncate_str(s: &str, max_chars: usize) -> String {
@@ -80,6 +100,28 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
     }
 }
 
+fn format_timestamp(timestamp: Option<u64>) -> String {
+    timestamp
+        .and_then(|t| {
+            Utc.timestamp_opt(t as i64, 0)
+                .single()
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        })
+        .unwrap_or_else(|| "N/A".to_string())
+}
+
+#[allow(dead_code)]
+fn color_status(status: JobStatus) -> ColoredString {
+    match status {
+        JobStatus::Completed => "Completed".green(),
+        JobStatus::Failed => "Failed".red(),
+        JobStatus::Pending => "Pending".yellow(),
+        JobStatus::Running => "Running".blue(),
+        JobStatus::Timeout => "Timeout".purple(),
+    }
+}
+
+#[allow(dead_code)]
 fn calculate_elapsed_time(job: &proto::Job) -> String {
     let start = job.start_time.map(|t| UNIX_EPOCH + Duration::from_secs(t));
     let stop = job.stop_time.map(|t| UNIX_EPOCH + Duration::from_secs(t));

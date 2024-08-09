@@ -10,7 +10,9 @@ clap = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 chrono = { workspace = true }
-serde_json ={ workspace = true }
+serde_json = { workspace = true }
+prettytable-rs = { workspace = true }
+colored = { workspace = true }
 
 [[bin]]
 name = "mshow"

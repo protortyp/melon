@@ -253,6 +253,18 @@ impl From<proto::JobStatus> for JobStatus {
     }
 }
 
+impl From<JobStatus> for String {
+    fn from(status: JobStatus) -> Self {
+        match status {
+            JobStatus::Completed => "Completed".to_string(),
+            JobStatus::Failed => "Failed".to_string(),
+            JobStatus::Pending => "Pending".to_string(),
+            JobStatus::Running => "Running".to_string(),
+            JobStatus::Timeout => "Timeout".to_string(),
+        }
+    }
+}
+
 /// A compute node instance.
 #[derive(Clone, Debug)]
 pub struct Node {
