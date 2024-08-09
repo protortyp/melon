@@ -47,3 +47,5 @@ predicates = "3.1.2"
 uuid = {version="1.10.0", features=["v4", "fast-rng"]}
 prettytable-rs = "^0.10"
 colored = "2.0"
+num_cpus = "1"
+

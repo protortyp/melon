@@ -1,9 +1,9 @@
 use crate::arg::Args;
-use crate::cgroups::CGroups;
+use crate::core_mask::CoreMask;
 use melon_common::proto::melon_scheduler_client::MelonSchedulerClient;
 use melon_common::proto::melon_worker_server::{MelonWorker, MelonWorkerServer};
 use melon_common::proto::{self, NodeInfo, NodeResources};
-use melon_common::{JobResult, JobStatus};
+use melon_common::{log, JobResult, JobStatus};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::process::Stdio;
@@ -31,9 +31,6 @@ pub struct Worker {
     /// Connection Status
     status: ConnectionStatus,
 
-    /// Server thread handler
-    pub server_handle: Option<Arc<Mutex<JoinHandle<()>>>>,
-
     /// Server thread notifier
     server_notifier: watch::Sender<()>,
 
@@ -54,27 +51,31 @@ pub struct Worker {
 
     /// Deadline notifiers
     deadline_notifiers: Arc<Mutex<HashMap<u64, mpsc::Sender<Duration>>>>,
+
+    /// Core Mask
+    core_mask: Arc<Mutex<CoreMask>>,
+
+    /// The Job core masks
+    job_masks: Arc<Mutex<HashMap<u64, u64>>>,
 }
 
 impl Drop for Worker {
+    #[tracing::instrument(level = "info", name = "Shut down mworker", skip(self))]
     fn drop(&mut self) {
-        // stop heartbeat thread
         if let Some(_handle) = &self.heartbeat_handle {
-            println!("Cleaning up heartbeat thread...");
+            log!(info, "Cleaning up heartbeat thread");
             self.heartbeat_notifier.notify_one();
         }
 
         // stop job polling thread
         if let Some(_handle) = &self.polling_handle {
-            println!("Cleaning up heartbeat thread...");
+            log!(info, "Cleaning up polling thread");
             self.polling_notifier.notify_one();
         }
 
         // stop server thread
-        println!("Cleaning up server thread...");
+        log!(info, "Cleaning up server thread");
         let _ = self.server_notifier.send(());
-
-        // todo: abort all running jobs
     }
 }
 
@@ -85,9 +86,16 @@ enum ConnectionStatus {
 }
 
 impl Worker {
+    #[tracing::instrument(level = "info", name = "Build new worker...", skip(args))]
     pub fn new(args: &Args) -> Result<Self, Box<dyn std::error::Error>> {
         let endpoint = format!("http://{}", args.api_endpoint);
         let (server_notifier, _server_notifier_rx) = watch::channel(());
+
+        let total_cores = num_cpus::get(); // cpuset considers logical cores
+        let core_mask = Arc::new(Mutex::new(CoreMask::new(total_cores as u32)));
+        let job_masks = Arc::new(Mutex::new(HashMap::new()));
+
+        log!(info, "Set up worker with {} logical cores", total_cores);
 
         Ok(Self {
             id: None,
@@ -96,30 +104,35 @@ impl Worker {
             endpoint,
             heartbeat_handle: None,
             heartbeat_notifier: Arc::new(Notify::new()),
-            server_handle: None,
             server_notifier,
             running_jobs: Arc::new(Mutex::new(HashMap::new())),
             polling_handle: None,
             polling_notifier: Arc::new(Notify::new()),
             deadline_notifiers: Arc::new(Mutex::new(HashMap::new())),
+            core_mask,
+            job_masks,
         })
     }
 
+    #[tracing::instrument(level = "info", name = "Start polling" skip(self))]
     pub async fn start_polling(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let worker = self.clone();
         let notifier = self.polling_notifier.clone();
 
         let handle = tokio::spawn(async move {
+            let span = tracing::span!(tracing::Level::INFO, "Polling thread");
+            let _guard = span.enter();
+
             let mut interval = interval(Duration::from_secs(5));
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         if let Err(e) = worker.poll_jobs().await {
-                            eprintln!("Error polling jobs: {:?}", e);
+                            log!(error, "Error polling jobs: {:?}", e);
                         }
                     }
                     _ = notifier.notified() => {
-                        println!("Polling task stopping.");
+                        log!(info, "Polling task stopping.");
                         return;
                     }
                 }
@@ -139,6 +152,7 @@ impl Worker {
     /// # TODOS
     ///
     /// - [ ] handle timeouts when sending the result to the master
+    #[tracing::instrument(level = "info", name = "Poll jobs" skip(self))]
     async fn poll_jobs(&self) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = self.endpoint.clone();
         let mut jobs = self.running_jobs.lock().await;
@@ -146,6 +160,7 @@ impl Worker {
         let mut completed_jobs = Vec::new();
         for (job_id, handle) in jobs.iter_mut() {
             if handle.is_finished() {
+                log!(info, "JOB ID is finished {}", job_id);
                 completed_jobs.push(*job_id);
             }
         }
@@ -154,13 +169,16 @@ impl Worker {
             if let Some(handle) = jobs.remove(&job_id) {
                 match handle.await {
                     Ok(result) => {
+                        log!(info, "Received job result {:?}", result);
+
                         // send the update to the server
                         let mut client = MelonSchedulerClient::connect(endpoint.clone()).await?;
                         let request = tonic::Request::new(result.into());
                         // FIXME: handle timeouts and disconnects
                         let _res = client.submit_job_result(request).await?;
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        log!(error, "Something is wrong {}", e);
                         let status = JobStatus::Failed;
                         let result = JobResult::new(job_id, status);
                         let mut client = MelonSchedulerClient::connect(endpoint.clone()).await?;
@@ -176,15 +194,16 @@ impl Worker {
         let mut notifiers = self.deadline_notifiers.lock().await;
         for &job_id in &completed_jobs {
             if notifiers.remove(&job_id).is_some() {
-                println!("Remove deadline notifier for {}", job_id);
+                log!(info, "Remove deadline notifier for {}", job_id);
             }
         }
 
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", name = "Register node at daemon" skip(self))]
     pub async fn register_node(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Register node at master at {}", self.endpoint);
+        log!(info, "Register node at master at {}", self.endpoint);
         let mut client = MelonSchedulerClient::connect(self.endpoint.clone().to_string()).await?;
         let resources = get_node_resources();
         let req = NodeInfo {
@@ -199,22 +218,25 @@ impl Worker {
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", name = "Start hearbeat loop" skip(self))]
     pub async fn start_heartbeats(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Start sending heartbeats...");
         let worker = self.clone();
         let notifier = self.heartbeat_notifier.clone();
         let handle = tokio::spawn(async move {
+            let span = tracing::span!(tracing::Level::INFO, "Heartbeat thread");
+            let _guard = span.enter();
+
             // FIXME: hardocded timer
             let mut interval = interval(Duration::from_secs(10));
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         if let Err(e) = worker.send_heartbeat().await {
-                            eprintln!("Error sending heartbeat: {:?}", e);
+                            log!(error, "Error sending heartbeat: {:?}", e);
                         }
                     }
                     _ = notifier.notified() => {
-                        println!("Heartbeat task stopping.");
+                        log!(info, "Heartbeat task stopping.");
                         return;
                     }
                 }
@@ -226,8 +248,8 @@ impl Worker {
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", name = "Send heartbeat" skip(self))]
     async fn send_heartbeat(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Send heartbeat!");
         let mut client = MelonSchedulerClient::connect(self.endpoint.clone().to_string()).await?;
         let node_id = self.id.clone().unwrap();
         let req = proto::Heartbeat { node_id };
@@ -237,26 +259,21 @@ impl Worker {
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", name = "Start worker server" skip(self))]
     pub async fn start_server(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Start worker server...");
         let worker = self.clone();
         let mut shutdown_rx = self.server_notifier.subscribe();
 
-        let handle = tokio::spawn(async move {
-            let address: SocketAddr = format!("[::1]:{}", worker.port).parse().unwrap();
-            let server = Server::builder()
-                .add_service(MelonWorkerServer::new(worker))
-                .serve_with_shutdown(address, async {
-                    shutdown_rx.changed().await.ok();
-                });
+        let address: SocketAddr = format!("[::1]:{}", worker.port).parse().unwrap();
+        let server = Server::builder()
+            .add_service(MelonWorkerServer::new(worker))
+            .serve_with_shutdown(address, async {
+                shutdown_rx.changed().await.ok();
+            });
 
-            if let Err(e) = server.await {
-                eprintln!(" > Server error: {}", e);
-            }
-        });
-
-        let handle = Some(Arc::new(Mutex::new(handle)));
-        self.server_handle = handle;
+        if let Err(e) = server.await {
+            log!(error, " Server error: {}", e);
+        }
         Ok(())
     }
 
@@ -265,13 +282,12 @@ impl Worker {
     /// # Notes
     ///
     /// Returns the thread handler to the calling scope.
+    #[tracing::instrument(level = "info", name = "Spawn new job" skip(self, job))]
     pub async fn spawn_job(
         &self,
         job: &proto::JobAssignment,
     ) -> Result<JoinHandle<JobResult>, Box<dyn std::error::Error>> {
         // spawn a new thread that works on the job
-        println!("Spawn job handler");
-
         let job_id = job.job_id;
         let (tx, mut rx) = mpsc::channel::<Duration>(10);
         self.deadline_notifiers.lock().await.insert(job_id, tx);
@@ -280,10 +296,28 @@ impl Worker {
         let pth = job.script_path.clone();
         let args = job.script_args.clone();
         let resources = job.req_res.unwrap();
+        let cores_needed = resources.cpu_count;
 
+        let allocated_mask = {
+            let mut core_mask = self.core_mask.lock().await;
+            core_mask
+                .allocate(cores_needed)
+                .ok_or_else(|| tonic::Status::resource_exhausted("Not enough cores available"))?
+        };
+        // store allocated mask
+        {
+            let mut job_masks = self.job_masks.lock().await;
+            job_masks.insert(job_id, allocated_mask);
+        }
+
+        let core_mask = self.core_mask.clone();
+        let job_masks = self.job_masks.clone();
         let handle = tokio::spawn(async move {
-            let pid = std::process::id();
-            let _cgroup_guard = CGroups::create_group_guard(job_id, pid, resources).unwrap();
+            let span = tracing::span!(tracing::Level::INFO, "Spawn jobs result listener");
+            let _guard = span.enter();
+
+            let _pid = std::process::id();
+            // let _cgroup_guard = CGroups::create_group_guard(job_id, pid, resources).unwrap();
 
             let mut child = match Command::new(&pth)
                 .args(&args)
@@ -305,43 +339,55 @@ impl Worker {
             loop {
                 tokio::select! {
                     status_result = child.wait() => {
+                        log!(info, "Got child result!");
                         // read the segments
                         stdout.read_to_string(&mut stdout_buf).await.unwrap_or_else(|e| {
-                            eprintln!("Failed to read stdout: {}", e);
+                            log!(error, "Failed to read stdout: {}", e);
                             0
                         });
                         stderr.read_to_string(&mut stderr_buf).await.unwrap_or_else(|e| {
-                            eprintln!("Failed to read stderr: {}", e);
+                            log!(error, "Failed to read stderr: {}", e);
                             0
                         });
 
-
+                        {
+                            // free up core mask
+                            let mut core_mask = core_mask.lock().await;
+                            let mut job_masks = job_masks.lock().await;
+                            if let Some(mask) = job_masks.remove(&job_id) {
+                                core_mask.free(mask);
+                            }
+                        }
                         match status_result {
                             Ok(status) => {
                                 if status.success() {
+                                    log!(info, "Job was a success");
                                     // capture the output
                                     return JobResult::new(job_id, JobStatus::Completed);
                                 } else {
                                     // capture error output
-                                    let _error_msg = format!("Process exited with status: {}. Stderr: {}", status, stderr_buf);
+                                    let error_msg = format!("Process exited with status: {}. Stderr: {}", status, stderr_buf);
+                                    log!(info, "Job was not successfull: {}", error_msg);
                                     return JobResult::new(job_id, JobStatus::Failed);
                                 }
                             },
                             Err(_) => {
+                                log!(error, "Something wrong with the result!");
                                 return JobResult::new(job_id, JobStatus::Failed);
                             }
                         }
                     },
                     _ = tokio::time::sleep_until(deadline) => {
+                        log!(info, "Deadline hit! Start cancel");
                         // reached timeout deadline
                         if let Err(e) = child.kill().await {
-                            eprintln!("Failed to kill process: {}", e);
+                            log!(error, "Failed to kill process: {}", e);
                         }
                         return JobResult::new(job_id, JobStatus::Timeout);
                     },
                     Some(extension) = rx.recv() => {
                         // extend the deadline
-                        println!("Receive deadline extension for job by {} minutes", extension.as_secs() / 60);
+                        log!(info, "Receive deadline extension for job by {} minutes", extension.as_secs() / 60);
                         deadline += extension;
                     }
                 }
@@ -364,12 +410,11 @@ fn get_node_resources() -> NodeResources {
 #[tonic::async_trait]
 impl MelonWorker for Worker {
     /// Receive a job from the master node
+    #[tracing::instrument(level = "info", name = "Get job assignment" skip(self,request))]
     async fn assign_job(
         &self,
         request: tonic::Request<proto::JobAssignment>,
     ) -> Result<tonic::Response<proto::WorkerJobResponse>, tonic::Status> {
-        println!("Receive job submission");
-
         let handle = self
             .spawn_job(request.get_ref())
             .await
@@ -382,11 +427,11 @@ impl MelonWorker for Worker {
         Ok(res)
     }
 
+    #[tracing::instrument(level = "info", name = "Get job cancellation request" skip(self,request))]
     async fn cancel_job(
         &self,
         request: tonic::Request<proto::CancelJobRequest>,
     ) -> Result<tonic::Response<()>, tonic::Status> {
-        println!("Receive cancel job request");
         let req = request.get_ref();
         let id = req.job_id;
         let mut running_jobs = self.running_jobs.lock().await;
@@ -396,17 +441,24 @@ impl MelonWorker for Worker {
                 handle.abort();
             }
             running_jobs.remove(&id);
+
+            // free the cores
+            let mut core_mask = self.core_mask.lock().await;
+            let mut job_masks = self.job_masks.lock().await;
+            if let Some(mask) = job_masks.remove(&id) {
+                core_mask.free(mask);
+            }
             return Ok(tonic::Response::new(()));
         }
 
         Err(tonic::Status::not_found("Not found!"))
     }
 
+    #[tracing::instrument(level = "info", name = "Get job extension request" skip(self,request))]
     async fn extend_job(
         &self,
         request: tonic::Request<proto::ExtendJobRequest>,
     ) -> Result<tonic::Response<()>, tonic::Status> {
-        println!("Receive job extension request");
         let req = request.get_ref();
         let id = req.job_id;
         let time_in_mins = req.extension_mins;
@@ -414,7 +466,7 @@ impl MelonWorker for Worker {
         if let Some(tx) = notifiers.get(&id) {
             match tx.send(Duration::from_secs(time_in_mins as u64 * 60)).await {
                 Ok(_) => {
-                    println!("Successfully sent the request via channels");
+                    log!(error, "Successfully sent the request via channels");
                     return Ok(tonic::Response::new(()));
                 }
                 Err(e) => return Err(tonic::Status::unknown(format!("Unkown error {}", e))),
