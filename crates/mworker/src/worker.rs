@@ -160,8 +160,8 @@ impl Worker {
                         // FIXME: handle timeouts and disconnects
                         let _res = client.submit_job_result(request).await?;
                     }
-                    Err(e) => {
-                        let status = JobStatus::Failed(e.to_string());
+                    Err(_) => {
+                        let status = JobStatus::Failed;
                         let result = JobResult::new(job_id, status);
                         let mut client = MelonSchedulerClient::connect(endpoint.clone()).await?;
                         let request = tonic::Request::new(result.into());
@@ -292,7 +292,7 @@ impl Worker {
                 .spawn()
             {
                 Ok(child) => child,
-                Err(e) => return JobResult::new(job_id, JobStatus::Failed(e.to_string())),
+                Err(_) => return JobResult::new(job_id, JobStatus::Failed),
             };
 
             let mut deadline = Instant::now() + Duration::from_secs(initial_time_mins * 60);
@@ -323,12 +323,12 @@ impl Worker {
                                     return JobResult::new(job_id, JobStatus::Completed);
                                 } else {
                                     // capture error output
-                                    let error_msg = format!("Process exited with status: {}. Stderr: {}", status, stderr_buf);
-                                    return JobResult::new(job_id, JobStatus::Failed(error_msg));
+                                    let _error_msg = format!("Process exited with status: {}. Stderr: {}", status, stderr_buf);
+                                    return JobResult::new(job_id, JobStatus::Failed);
                                 }
                             },
-                            Err(e) => {
-                                return JobResult::new(job_id, JobStatus::Failed(e.to_string()));
+                            Err(_) => {
+                                return JobResult::new(job_id, JobStatus::Failed);
                             }
                         }
                     },

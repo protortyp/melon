@@ -11,14 +11,23 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tonic = { workspace = true }
 nanoid = { workspace = true }
-serde = { workspace = true}
+rusqlite = { workspace = true }
+directories = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+chrono = { workspace = true }
 serde-aux = { workspace = true }
 tokio-stream =  { workspace = true }
 
 [dev-dependencies]
+tempdir = { workspace = true }
 assert_cmd = {workspace = true}
 predicates = {workspace = true}
+uuid = {workspace = true}
+
+[lib]
+name = "melond"
+path = "src/lib.rs"
 
 [[bin]]
 name = "melond"

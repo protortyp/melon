@@ -1,5 +1,8 @@
+use crate::db::DatabaseHandler;
+use crate::settings::Settings;
 use melon_common::proto::melon_scheduler_server::MelonScheduler;
 use melon_common::proto::melon_worker_client::MelonWorkerClient;
+use melon_common::utils::get_current_timestamp;
 use melon_common::{log, proto, JobResult, JobStatus, RequestedResources};
 use melon_common::{Job, Node, NodeStatus};
 use nanoid::nanoid;
@@ -9,7 +12,8 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{atomic::AtomicU64, Arc},
 };
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc, Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tonic::Status;
@@ -39,6 +43,12 @@ pub struct Scheduler {
 
     /// Thread notifier
     health_notifier: Arc<Notify>,
+
+    /// Database Writer
+    db: Arc<DatabaseHandler>,
+
+    /// Database Writer Sender
+    db_tx: Arc<Sender<Job>>,
 }
 
 impl Drop for Scheduler {
@@ -56,13 +66,30 @@ impl Drop for Scheduler {
 
         // clear all pending jobs or save them to file
         // + abort all running jobs
+
+        // shutdown db_writer
+        self.db.shutdown();
     }
 }
 
-impl Default for Scheduler {
-    fn default() -> Self {
+impl Scheduler {
+    pub fn new(settings: &Settings) -> Self {
+        // Spawn Database Writer
+        let (db_tx, db_rx) = mpsc::channel::<Job>(100);
+        let mut db_writer =
+            DatabaseHandler::new(db_rx, &settings.database).expect("Could not init database write");
+        db_writer.run().expect("Could not start database writer");
+        let db_writer = Arc::new(db_writer);
+        let db_tx = Arc::new(db_tx);
+
+        let highest_job_id = db_writer
+            .get_highest_job_id()
+            .expect("Could not get highest job ID from database");
+
+        let job_ctr = Arc::new(AtomicU64::new(highest_job_id + 1));
+
         Self {
-            job_ctr: Arc::new(AtomicU64::new(0)),
+            job_ctr,
             nodes: Arc::new(Mutex::new(HashMap::new())),
             running_jobs: Arc::new(Mutex::new(HashMap::new())),
             pending_jobs: Arc::new(Mutex::new(VecDeque::new())),
@@ -70,11 +97,11 @@ impl Default for Scheduler {
             notifier: Arc::new(Notify::new()),
             health_handle: None,
             health_notifier: Arc::new(Notify::new()),
+            db: db_writer,
+            db_tx,
         }
     }
-}
 
-impl Scheduler {
     /// Starts a dedicated task that periodically scans for pending jobs
     /// and assigns them to available workers. This function ensures efficient job
     /// distribution by continuously monitoring the job queue and worker availability.
@@ -127,7 +154,7 @@ impl Scheduler {
                         let mut running_jobs = scheduler.running_jobs.lock().await;
                         for index in to_remove.iter().rev() {
                             let mut job = pending_jobs.remove(*index).expect("Job should exist");
-                            job.start_time = Some(Instant::now());
+                            job.start_time = Some(get_current_timestamp());
                             job.status = JobStatus::Running;
                             let job_id = job.id;
 
@@ -227,6 +254,14 @@ impl Scheduler {
         }
         None
     }
+
+    #[tracing::instrument(level = "info", name = "Init job counter", skip(self))]
+    fn init_job_ctr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let ctr = self.db.get_highest_job_id()? + 1;
+        log!(debug, "Set job counter to {}", ctr);
+        self.job_ctr.store(ctr, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
 }
 
 #[tonic::async_trait]
@@ -244,7 +279,7 @@ impl MelonScheduler for Scheduler {
             .job_ctr
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let res = sub.req_res.expect("No resources given");
-        let resources = RequestedResources::from_proto(res);
+        let resources = res.into();
         let new_job = Job::new(
             job_id,
             sub.user.clone(),
@@ -272,8 +307,7 @@ impl MelonScheduler for Scheduler {
     ) -> Result<tonic::Response<proto::RegistrationResponse>, tonic::Status> {
         let req = request.get_ref();
         let resources = req.resources.unwrap();
-        let resources =
-            melon_common::NodeResources::new(resources.cpu_count as u8, resources.memory);
+        let resources = melon_common::NodeResources::new(resources.cpu_count, resources.memory);
 
         let id = nanoid!();
         let node = Node::new(
@@ -324,11 +358,11 @@ impl MelonScheduler for Scheduler {
         request: tonic::Request<proto::JobResult>,
     ) -> Result<tonic::Response<proto::JobResultResponse>, tonic::Status> {
         let req = request.get_ref();
-        let res: JobResult = req.into();
+        let result: JobResult = req.into();
 
-        let job_id = res.id;
+        let job_id = result.id;
         let mut jobs = self.running_jobs.lock().await;
-        if let Some(job) = jobs.get(&res.id) {
+        if let Some(job) = jobs.get(&result.id) {
             let res = &job.req_res;
             let node_id = job.assigned_node.as_ref().expect("Expect assigned node id");
 
@@ -338,7 +372,22 @@ impl MelonScheduler for Scheduler {
             node.free_avail_resource(res);
 
             // remove job from tracking map
-            jobs.remove(&job_id);
+            let mut job = jobs.remove(&job_id).unwrap();
+
+            // send the finished job to the database writer for permanent storage
+            job.stop_time = Some(get_current_timestamp());
+            job.status = result.status;
+
+            let tx = self.db_tx.clone();
+            // FIXME: hardcoded timeout
+            if let Err(e) = tx.send(job).await {
+                log!(
+                    error,
+                    "Could not send job {} to database writer: {}",
+                    job_id,
+                    e
+                );
+            }
 
             // ack
             let res = proto::JobResultResponse { ack: true };
@@ -359,10 +408,9 @@ impl MelonScheduler for Scheduler {
         let running_jobs = self.running_jobs.lock().await;
 
         // accumulate pending jobs
-        let mut job_infos: Vec<proto::JobInfo> =
-            pending_jobs.iter().map(|j| j.clone().into()).collect();
-        job_infos.extend(running_jobs.values().map(|j| j.clone().into()));
-        let response = proto::JobListResponse { jobs: job_infos };
+        let mut jobs: Vec<proto::Job> = pending_jobs.iter().map(|j| j.into()).collect();
+        jobs.extend(running_jobs.values().map(|j| j.into()));
+        let response = proto::JobListResponse { jobs };
         let response = tonic::Response::new(response);
         Ok(response)
     }
@@ -418,7 +466,7 @@ impl MelonScheduler for Scheduler {
                 client.cancel_job(worker_request).await?;
 
                 // free up the node resources to mark availability
-                let res = job.req_res.clone();
+                let res = job.req_res;
                 node.free_avail_resource(&res);
             }
 
@@ -491,5 +539,55 @@ impl MelonScheduler for Scheduler {
         }
 
         Err(tonic::Status::not_found("Couldn't find job id"))
+    }
+
+    #[tracing::instrument(
+        level = "info",
+        name = "Get job by job id",
+        skip(self, request),
+        fields(job_id = %request.get_ref().job_id)
+    )]
+    async fn get_job_info(
+        &self,
+        request: tonic::Request<proto::GetJobInfoRequest>,
+    ) -> Result<tonic::Response<proto::Job>, tonic::Status> {
+        let req = request.get_ref();
+        let id = req.job_id;
+
+        // check in running jobs => O(1)
+        let running_jobs = self.running_jobs.lock().await;
+        if let Some(job) = running_jobs.get(&id) {
+            log!(debug, "Found job with id {} in running jobs", id);
+            return Ok(tonic::Response::new(job.into()));
+        }
+
+        // check in pending jobs
+        let pending_jobs = self.pending_jobs.lock().await;
+        if let Some(pos) = pending_jobs.iter().position(|job| job.id == id) {
+            log!(debug, "Found job with id {} in pending jobs", id);
+            let job = pending_jobs.get(pos).expect("exists for sure");
+            return Ok(tonic::Response::new(job.into()));
+        }
+
+        // check finished jobs in database
+        match self.db.get_job_opt(id) {
+            Ok(Some(job)) => {
+                log!(debug, "Found job with id {} in database", id);
+                Ok(tonic::Response::new((&job).into()))
+            }
+            Ok(None) => {
+                log!(debug, "Could not find job with id {} anywhere", id);
+                Err(tonic::Status::not_found(format!("Job ID not found {}", id)))
+            }
+            Err(e) => {
+                log!(
+                    error,
+                    "Unexpected error when looking for job with id {} in database: {}",
+                    id,
+                    e
+                );
+                Err(tonic::Status::unknown(format!("Unexpected Error {}", e)))
+            }
+        }
     }
 }

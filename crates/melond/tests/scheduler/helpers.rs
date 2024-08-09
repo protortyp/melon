@@ -7,7 +7,9 @@ use melon_common::{
     },
 };
 use melond::{application::Application, settings::Settings};
+use tempdir::TempDir;
 use tonic::Response;
+use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct TestApp {
@@ -87,10 +89,28 @@ impl TestApp {
         let response = client.extend_job(request).await?;
         Ok(response)
     }
+
+    pub async fn get_job_info(
+        &self,
+        request: proto::GetJobInfoRequest,
+    ) -> Result<tonic::Response<proto::Job>, Box<dyn std::error::Error>> {
+        let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
+        let request = tonic::Request::new(request);
+        let response = client.get_job_info(request).await?;
+        Ok(response)
+    }
 }
 
 fn configure_common_settings(c: &mut Settings) {
-    c.application.port = 0; // assign random port
+    let tmp_dir = TempDir::new(&Uuid::new_v4().to_string()).unwrap();
+    let db_path = tmp_dir
+        .path()
+        .join("melon.db")
+        .to_str()
+        .unwrap()
+        .to_string();
+    c.application.port = 0;
+    c.database.path = db_path;
 }
 
 pub async fn spawn_app() -> TestApp {

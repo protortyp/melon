@@ -1,10 +1,10 @@
 mod arg;
 use anyhow::{anyhow, Result};
-use melon_common::proto::Resources;
+use melon_common::RequestedResources;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-pub fn parse_mbatch_comments(path: &str) -> Result<Resources> {
+pub fn parse_mbatch_comments(path: &str) -> Result<RequestedResources> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
@@ -47,7 +47,7 @@ pub fn parse_mbatch_comments(path: &str) -> Result<Resources> {
     }
 
     if let (Some(cpu_count), Some(memory), Some(time)) = (cpu_count, memory, time_limit_mins) {
-        Ok(Resources {
+        Ok(RequestedResources {
             cpu_count,
             memory,
             time,

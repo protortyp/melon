@@ -1,0 +1,19 @@
+[package]
+name = "mshow"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+melon-common = { path = "../melon-common" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+prettytable-rs = { workspace = true }
+colored = { workspace = true }
+
+[[bin]]
+name = "mshow"
+path = "src/main.rs"

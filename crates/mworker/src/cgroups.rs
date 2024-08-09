@@ -37,7 +37,7 @@ impl CGroups {
     pub fn create_group_guard(
         job_id: u64,
         pid: u32,
-        resources: proto::Resources,
+        resources: proto::RequestedResources,
     ) -> Result<Self, Box<dyn Error>> {
         let cgroup = Self::create_group(job_id, resources)?;
         Self::assign_pid_to_group(&cgroup, pid)?;
@@ -51,13 +51,16 @@ impl CGroups {
     pub fn create_group_guard(
         _job_id: u64,
         _pid: u32,
-        _resources: proto::Resources,
+        _resources: proto::RequestedResources,
     ) -> Result<Self, Box<dyn Error>> {
         Ok(Self { cgroup: Some(()) })
     }
 
     #[cfg(target_os = "linux")]
-    fn create_group(job_id: u64, resources: proto::Resources) -> Result<Cgroup, Box<dyn Error>> {
+    fn create_group(
+        job_id: u64,
+        resources: proto::RequestedResources,
+    ) -> Result<Cgroup, Box<dyn Error>> {
         let cpu_count = resources.cpu_count as u64;
         let memory_in_bytes = resources.memory;
 
