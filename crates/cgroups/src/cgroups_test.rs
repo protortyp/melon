@@ -1,10 +1,58 @@
 #[cfg(test)]
 mod tests {
     use crate::error::CGroupsError;
-    use crate::filesystem::{FileSystem, MockFileSystem};
+    use crate::filesystem::FileSystem;
     use crate::CGroups;
+    use std::collections::HashMap;
     use std::io::{Error, ErrorKind, Result};
     use std::path::Path;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    pub struct MockFileSystem {
+        files: Arc<Mutex<HashMap<PathBuf, Vec<u8>>>>,
+    }
+
+    impl MockFileSystem {
+        pub fn new() -> Self {
+            Self {
+                files: Arc::new(Mutex::new(HashMap::new())),
+            }
+        }
+    }
+
+    impl FileSystem for MockFileSystem {
+        fn create_dir_all(&self, path: &Path) -> Result<()> {
+            let path = path.to_path_buf();
+            let mut files = self.files.lock().unwrap();
+            files.insert(path, Vec::new());
+            Ok(())
+        }
+
+        fn write(&self, path: &Path, contents: &[u8]) -> Result<()> {
+            let path = path.to_path_buf();
+            let mut files = self.files.lock().unwrap();
+            files.insert(path, contents.to_vec());
+            Ok(())
+        }
+
+        fn append(&self, path: &Path, contents: &[u8]) -> Result<()> {
+            let path = path.to_path_buf();
+            let mut files = self.files.lock().unwrap();
+            files.entry(path).or_default().extend_from_slice(contents);
+            Ok(())
+        }
+
+        fn read(&self, path: &Path) -> Result<Vec<u8>> {
+            let path = path.to_path_buf();
+            let files = self.files.lock().unwrap();
+            files
+                .get(&path)
+                .cloned()
+                .ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))
+        }
+    }
 
     fn setup_mock_fs() -> MockFileSystem {
         MockFileSystem::new()
