@@ -7,7 +7,7 @@ members = [
     "crates/mworker",
     "crates/mqueue",
     "crates/mextend",
-    "crates/mshow",
+    "crates/mshow", "crates/cgroups",
 ]
 resolver = "2"
 
@@ -16,7 +16,6 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-anyhow = "1.0.86"
 clap = { version = "4.5.9", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 tonic = "0.12.1"
@@ -48,4 +47,5 @@ uuid = {version="1.10.0", features=["v4", "fast-rng"]}
 prettytable-rs = "^0.10"
 colored = "2.0"
 num_cpus = "1"
-
+thiserror = "1.0"
+anyhow = "1.0"

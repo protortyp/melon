@@ -1,0 +1,8 @@
+[package]
+name = "cgroups"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+anyhow = { workspace = true }
