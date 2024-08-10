@@ -40,7 +40,7 @@ pub enum CGroupsError {
     CGroupRemovalFailed(io::Error),
 
     #[error("Some processes are not finished")]
-    CGroupHasRunningProcesses
+    CGroupHasRunningProcesses,
 }
 
 impl From<io::Error> for CGroupsError {
