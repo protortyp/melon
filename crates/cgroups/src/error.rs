@@ -35,6 +35,12 @@ pub enum CGroupsError {
 
     #[error("Unknown error: {0}")]
     Unknown(String),
+
+    #[error("Cgroup removal failed")]
+    CGroupRemovalFailed(io::Error),
+
+    #[error("Some processes are not finished")]
+    CGroupHasRunningProcesses
 }
 
 impl From<io::Error> for CGroupsError {

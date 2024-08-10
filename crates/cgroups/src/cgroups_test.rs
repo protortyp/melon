@@ -20,6 +20,13 @@ mod tests {
                 files: Arc::new(Mutex::new(HashMap::new())),
             }
         }
+
+        fn set_running_processes(&self, pids: Vec<i32>) {
+            let mut files = self.files.lock().unwrap();
+            for pid in pids {
+                files.insert(PathBuf::from(format!("/proc/{}/stat", pid)), vec![]);
+            }
+        }
     }
 
     impl FileSystem for MockFileSystem {
@@ -52,10 +59,40 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))
         }
+
+        fn exists(&self, path: &Path) -> bool {
+            let files = self.files.lock().unwrap();
+            files.contains_key(&path.to_path_buf())
+        }
+
+        fn read_to_string(&self, path: &Path) -> Result<String> {
+            let content = self.read(path)?;
+            String::from_utf8(content).map_err(|e| Error::new(ErrorKind::InvalidData, e))
+        }
+
+        fn remove_dir_all(&self, path: &Path) -> Result<()> {
+            let path = path.to_path_buf();
+            let mut files = self.files.lock().unwrap();
+            files.retain(|k, _| !k.starts_with(&path));
+            Ok(())
+        }
     }
 
     fn setup_mock_fs() -> MockFileSystem {
         MockFileSystem::new()
+    }
+
+    fn setup_cgroup(mock_fs: &MockFileSystem, name: &str) {
+        let cgroup_path = PathBuf::from("/sys/fs/cgroup").join(name);
+        mock_fs
+            .files
+            .lock()
+            .unwrap()
+            .insert(cgroup_path.clone(), Vec::new());
+        mock_fs.files.lock().unwrap().insert(
+            cgroup_path.join("cgroup.procs"),
+            "1000\n2000\n3000".as_bytes().to_vec(),
+        );
     }
 
     #[test]
@@ -212,6 +249,18 @@ mod tests {
             fn read(&self, _path: &Path) -> Result<Vec<u8>> {
                 unimplemented!()
             }
+
+            fn exists(&self, _path: &Path) -> bool {
+                unimplemented!()
+            }
+
+            fn read_to_string(&self, _path: &Path) -> Result<String> {
+                unimplemented!()
+            }
+
+            fn remove_dir_all(&self, _path: &Path) -> Result<()> {
+                unimplemented!()
+            }
         }
 
         let cgroup = CGroups::build()
@@ -241,6 +290,18 @@ mod tests {
             fn read(&self, _path: &Path) -> Result<Vec<u8>> {
                 unimplemented!()
             }
+
+            fn exists(&self, _path: &Path) -> bool {
+                unimplemented!()
+            }
+
+            fn read_to_string(&self, _path: &Path) -> Result<String> {
+                unimplemented!()
+            }
+
+            fn remove_dir_all(&self, _path: &Path) -> Result<()> {
+                unimplemented!()
+            }
         }
 
         let cgroup = CGroups::build()
@@ -251,5 +312,135 @@ mod tests {
 
         let result = cgroup.add_process(1234);
         assert!(matches!(result, Err(CGroupsError::AddProcessFailed(_))));
+    }
+
+    #[test]
+    fn test_remove_success() {
+        let mock_fs = setup_mock_fs();
+        setup_cgroup(&mock_fs, "test_cgroup");
+        let cgroup = CGroups::build()
+            .name("test_cgroup")
+            .with_fs(mock_fs.clone())
+            .build()
+            .unwrap();
+
+        assert!(cgroup.remove().is_ok());
+        assert!(!mock_fs.exists(&PathBuf::from("/sys/fs/cgroup/test_cgroup")));
+    }
+
+    #[test]
+    fn test_remove_cgroup_not_found() {
+        let mock_fs = setup_mock_fs();
+        let cgroup = CGroups::build()
+            .name("non_existent_cgroup")
+            .with_fs(mock_fs.clone())
+            .build()
+            .unwrap();
+
+        let result = cgroup.remove();
+        assert!(matches!(result, Err(CGroupsError::CGroupRemovalFailed(_))));
+    }
+
+    #[test]
+    fn test_remove_with_running_processes() {
+        let mock_fs = setup_mock_fs();
+        setup_cgroup(&mock_fs, "test_cgroup");
+        mock_fs.set_running_processes(vec![1000, 2000]);
+        let cgroup = CGroups::build()
+            .name("test_cgroup")
+            .with_fs(mock_fs.clone())
+            .build()
+            .unwrap();
+
+        let result = cgroup.remove();
+        assert!(matches!(
+            result,
+            Err(CGroupsError::CGroupHasRunningProcesses)
+        ));
+    }
+
+    #[test]
+    fn test_remove_failed() {
+        #[derive(Clone)]
+        struct FailingMockFileSystem {
+            files: Arc<Mutex<HashMap<PathBuf, Vec<u8>>>>,
+        }
+
+        impl FailingMockFileSystem {
+            fn new() -> Self {
+                Self {
+                    files: Arc::new(Mutex::new(HashMap::new())),
+                }
+            }
+        }
+
+        impl FileSystem for FailingMockFileSystem {
+            fn create_dir_all(&self, path: &Path) -> Result<()> {
+                let path = path.to_path_buf();
+                let mut files = self.files.lock().unwrap();
+                files.insert(path, Vec::new());
+                Ok(())
+            }
+
+            fn write(&self, path: &Path, contents: &[u8]) -> Result<()> {
+                let path = path.to_path_buf();
+                let mut files = self.files.lock().unwrap();
+                files.insert(path, contents.to_vec());
+                Ok(())
+            }
+
+            fn append(&self, path: &Path, contents: &[u8]) -> Result<()> {
+                let path = path.to_path_buf();
+                let mut files = self.files.lock().unwrap();
+                files.entry(path).or_default().extend_from_slice(contents);
+                Ok(())
+            }
+
+            fn read(&self, path: &Path) -> Result<Vec<u8>> {
+                let path = path.to_path_buf();
+                let files = self.files.lock().unwrap();
+                files
+                    .get(&path)
+                    .cloned()
+                    .ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))
+            }
+
+            fn exists(&self, path: &Path) -> bool {
+                let files = self.files.lock().unwrap();
+                files.contains_key(&path.to_path_buf())
+            }
+
+            fn read_to_string(&self, path: &Path) -> Result<String> {
+                let content = self.read(path)?;
+                String::from_utf8(content).map_err(|e| Error::new(ErrorKind::InvalidData, e))
+            }
+
+            // only let directory removals fail
+            fn remove_dir_all(&self, _path: &Path) -> Result<()> {
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
+            }
+        }
+
+        let mock_fs = FailingMockFileSystem::new();
+        let cgroup_path = PathBuf::from("/sys/fs/cgroup/test_cgroup");
+        mock_fs
+            .files
+            .lock()
+            .unwrap()
+            .insert(cgroup_path.clone(), Vec::new());
+
+        mock_fs
+            .files
+            .lock()
+            .unwrap()
+            .insert(cgroup_path.join("cgroup.procs"), Vec::new());
+        let cgroup = CGroups::build()
+            .name("test_cgroup")
+            .with_fs(mock_fs)
+            .build()
+            .unwrap();
+
+        let result = cgroup.remove();
+        assert!(matches!(result, Err(CGroupsError::CGroupRemovalFailed(_))));
     }
 }

@@ -7,6 +7,9 @@ pub trait FileSystem {
     fn write(&self, path: &Path, contents: &[u8]) -> Result<()>;
     fn append(&self, path: &Path, contents: &[u8]) -> Result<()>;
     fn read(&self, path: &Path) -> Result<Vec<u8>>;
+    fn exists(&self, path: &Path) -> bool;
+    fn read_to_string(&self, path: &Path) -> Result<String>;
+    fn remove_dir_all(&self, path: &Path) -> Result<()>;
 }
 
 pub struct RealFileSystem;
@@ -30,5 +33,17 @@ impl FileSystem for RealFileSystem {
 
     fn read(&self, path: &Path) -> Result<Vec<u8>> {
         fs::read(path)
+    }
+
+    fn exists(&self, path: &Path) -> bool {
+        path.exists()
+    }
+
+    fn read_to_string(&self, path: &Path) -> Result<String> {
+        fs::read_to_string(path)
+    }
+
+    fn remove_dir_all(&self, path: &Path) -> Result<()> {
+        fs::remove_dir_all(path)
     }
 }

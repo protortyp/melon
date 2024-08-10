@@ -1,6 +1,6 @@
 use crate::error::{CGroupsError, Result};
 use crate::filesystem::{FileSystem, RealFileSystem};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 /// # CGroups Management Module
 ///
 /// This module provides a high-level interface for managing Linux Control Groups (cgroups).
@@ -131,5 +131,52 @@ impl CGroups {
             .append(&path, format!("{}\n", pid).as_bytes())
             .map_err(CGroupsError::AddProcessFailed)?;
         Ok(())
+    }
+
+    pub fn remove(&self) -> Result<()> {
+        let path = PathBuf::from("/sys/fs/cgroup").join(&self.name);
+
+        if !self.fs.exists(&path) {
+            return Err(CGroupsError::CGroupRemovalFailed(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Cgroup does not exist",
+            )));
+        }
+
+        // ceck if there are any running processes
+        if self.has_running_processes(&path)? {
+            return Err(CGroupsError::CGroupHasRunningProcesses);
+        }
+
+        // remove the cgroup directory
+        self.fs
+            .remove_dir_all(&path)
+            .map_err(CGroupsError::CGroupRemovalFailed)?;
+
+        Ok(())
+    }
+
+    fn process_exists(&self, pid: i32) -> bool {
+        let proc_stat_path = PathBuf::from(format!("/proc/{}/stat", pid));
+        self.fs.exists(&proc_stat_path)
+    }
+
+    fn has_running_processes(&self, path: &Path) -> Result<bool> {
+        let procs_path = path.join("cgroup.procs");
+
+        let procs = self
+            .fs
+            .read_to_string(&procs_path)
+            .map_err(CGroupsError::CGroupReadFailed)?;
+
+        for pid in procs.split_whitespace() {
+            if let Ok(pid) = pid.parse::<i32>() {
+                if self.process_exists(pid) {
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
     }
 }
