@@ -70,7 +70,7 @@ mod tests {
             String::from_utf8(content).map_err(|e| Error::new(ErrorKind::InvalidData, e))
         }
 
-        fn remove_dir_all(&self, path: &Path) -> Result<()> {
+        fn remove_dir(&self, path: &Path) -> Result<()> {
             let path = path.to_path_buf();
             let mut files = self.files.lock().unwrap();
             files.retain(|k, _| !k.starts_with(&path));
@@ -145,9 +145,7 @@ mod tests {
         assert_eq!(cpu_content, "0-1");
         let memory_content = String::from_utf8(
             mock_fs
-                .read(Path::new(
-                    "/sys/fs/cgroup/test_cgroup/memory.limit_in_bytes",
-                ))
+                .read(Path::new("/sys/fs/cgroup/test_cgroup/memory.max"))
                 .unwrap(),
         )
         .unwrap();
@@ -161,9 +159,7 @@ mod tests {
         assert_eq!(io_content, "8:0 rbps=1048576");
         let controllers_content = String::from_utf8(
             mock_fs
-                .read(Path::new(
-                    "/sys/fs/cgroup/test_cgroup/cgroup.subtree_control",
-                ))
+                .read(Path::new("/sys/fs/cgroup/cgroup.subtree_control"))
                 .unwrap(),
         )
         .unwrap();
@@ -192,17 +188,13 @@ mod tests {
         assert_eq!(cpu_content, "0-1");
         let controllers_content = String::from_utf8(
             mock_fs
-                .read(Path::new(
-                    "/sys/fs/cgroup/test_cgroup/cgroup.subtree_control",
-                ))
+                .read(Path::new("/sys/fs/cgroup/cgroup.subtree_control"))
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(controllers_content, "+cpuset");
         assert!(mock_fs
-            .read(Path::new(
-                "/sys/fs/cgroup/test_cgroup/memory.limit_in_bytes"
-            ))
+            .read(Path::new("/sys/fs/cgroup/test_cgroup/memory.max"))
             .is_err());
         assert!(mock_fs
             .read(Path::new("/sys/fs/cgroup/test_cgroup/io.max"))
@@ -241,25 +233,22 @@ mod tests {
                 Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
             fn write(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
-                unimplemented!()
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
             fn append(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
-                unimplemented!()
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
             fn read(&self, _path: &Path) -> Result<Vec<u8>> {
-                unimplemented!()
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
-
             fn exists(&self, _path: &Path) -> bool {
-                unimplemented!()
+                false
             }
-
             fn read_to_string(&self, _path: &Path) -> Result<String> {
-                unimplemented!()
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
-
-            fn remove_dir_all(&self, _path: &Path) -> Result<()> {
-                unimplemented!()
+            fn remove_dir(&self, _path: &Path) -> Result<()> {
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
         }
 
@@ -279,28 +268,25 @@ mod tests {
 
         impl FileSystem for FailingMockFileSystem {
             fn create_dir_all(&self, _path: &Path) -> Result<()> {
-                Ok(())
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
             fn write(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
-                Ok(())
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
             fn append(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
                 Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
             fn read(&self, _path: &Path) -> Result<Vec<u8>> {
-                unimplemented!()
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
-
             fn exists(&self, _path: &Path) -> bool {
-                unimplemented!()
+                false
             }
-
             fn read_to_string(&self, _path: &Path) -> Result<String> {
-                unimplemented!()
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
-
-            fn remove_dir_all(&self, _path: &Path) -> Result<()> {
-                unimplemented!()
+            fn remove_dir(&self, _path: &Path) -> Result<()> {
+                Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
         }
 
@@ -416,7 +402,7 @@ mod tests {
             }
 
             // only let directory removals fail
-            fn remove_dir_all(&self, _path: &Path) -> Result<()> {
+            fn remove_dir(&self, _path: &Path) -> Result<()> {
                 Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"))
             }
         }

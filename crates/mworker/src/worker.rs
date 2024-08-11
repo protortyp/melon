@@ -1,5 +1,7 @@
 use crate::arg::Args;
 use crate::core_mask::CoreMask;
+#[cfg(feature = "cgroups")]
+use cgroups::CGroups;
 use melon_common::proto::melon_scheduler_client::MelonSchedulerClient;
 use melon_common::proto::melon_worker_server::{MelonWorker, MelonWorkerServer};
 use melon_common::proto::{self, NodeInfo, NodeResources};
@@ -152,7 +154,7 @@ impl Worker {
     /// # TODOS
     ///
     /// - [ ] handle timeouts when sending the result to the master
-    #[tracing::instrument(level = "info", name = "Poll jobs" skip(self))]
+    #[tracing::instrument(level = "debug", name = "Poll jobs" skip(self))]
     async fn poll_jobs(&self) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = self.endpoint.clone();
         let mut jobs = self.running_jobs.lock().await;
@@ -218,7 +220,7 @@ impl Worker {
         Ok(())
     }
 
-    #[tracing::instrument(level = "info", name = "Start hearbeat loop" skip(self))]
+    #[tracing::instrument(level = "debug", name = "Start hearbeat loop" skip(self))]
     pub async fn start_heartbeats(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let worker = self.clone();
         let notifier = self.heartbeat_notifier.clone();
@@ -248,7 +250,7 @@ impl Worker {
         Ok(())
     }
 
-    #[tracing::instrument(level = "info", name = "Send heartbeat" skip(self))]
+    #[tracing::instrument(level = "debug", name = "Send heartbeat" skip(self))]
     async fn send_heartbeat(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut client = MelonSchedulerClient::connect(self.endpoint.clone().to_string()).await?;
         let node_id = self.id.clone().unwrap();
@@ -291,7 +293,7 @@ impl Worker {
         let job_id = job.job_id;
         let (tx, mut rx) = mpsc::channel::<Duration>(10);
         self.deadline_notifiers.lock().await.insert(job_id, tx);
-        let initial_time_mins = job.req_res.unwrap().time as u64;
+        let initial_time_mins = job.req_res.expect("Could not get resources").time as u64;
 
         let pth = job.script_path.clone();
         let args = job.script_args.clone();
@@ -300,9 +302,10 @@ impl Worker {
 
         let allocated_mask = {
             let mut core_mask = self.core_mask.lock().await;
-            core_mask
-                .allocate(cores_needed)
-                .ok_or_else(|| tonic::Status::resource_exhausted("Not enough cores available"))?
+            core_mask.allocate(cores_needed).ok_or_else(|| {
+                log!(error, "Resources are exhausted!");
+                tonic::Status::resource_exhausted("Not enough cores available")
+            })?
         };
         // store allocated mask
         {
@@ -316,8 +319,11 @@ impl Worker {
             let span = tracing::span!(tracing::Level::INFO, "Spawn jobs result listener");
             let _guard = span.enter();
 
-            let _pid = std::process::id();
-            // let _cgroup_guard = CGroups::create_group_guard(job_id, pid, resources).unwrap();
+            // let cgroup = Arc::new(Mutex::new(None));
+            // let cgroup_clone = Arc::clone(&cgroup);
+
+            let core_string = CoreMask::mask_to_string(allocated_mask);
+            log!(info, "Get core string {}", core_string);
 
             let mut child = match Command::new(&pth)
                 .args(&args)
@@ -328,6 +334,46 @@ impl Worker {
                 Ok(child) => child,
                 Err(_) => return JobResult::new(job_id, JobStatus::Failed),
             };
+
+            #[cfg(feature = "cgroups")]
+            let child_pid = match child.id() {
+                Some(id) => id,
+                None => return JobResult::new(job_id, JobStatus::Failed),
+            };
+
+            #[cfg(feature = "cgroups")]
+            let cgroup = match CGroups::build()
+                .name(&format!("melon_{}", child_pid))
+                .with_cpu(&core_string)
+                .with_memory(resources.memory)
+                .build()
+            {
+                Ok(group) => group,
+                Err(e) => {
+                    log!(
+                        error,
+                        "Could not build cgroup for job {} on process id {} due to error {}",
+                        job_id,
+                        child_pid,
+                        e.to_string()
+                    );
+                    return JobResult::new(job_id, JobStatus::Failed);
+                }
+            };
+
+            #[cfg(feature = "cgroups")]
+            if let Err(e) = cgroup.create() {
+                log!(
+                    error,
+                    "Could not create cgroup for job {} on process id {} due to error {}",
+                    job_id,
+                    child_pid,
+                    e.to_string()
+                );
+                return JobResult::new(job_id, JobStatus::Failed);
+            }
+
+            log!(info, "Successfully created cgroup!");
 
             let mut deadline = Instant::now() + Duration::from_secs(initial_time_mins * 60);
             let mut stdout = BufReader::new(child.stdout.take().unwrap());
@@ -358,11 +404,12 @@ impl Worker {
                                 core_mask.free(mask);
                             }
                         }
+
                         match status_result {
                             Ok(status) => {
                                 if status.success() {
-                                    log!(info, "Job was a success");
                                     // capture the output
+                                    log!(info, "Job was a success");
                                     return JobResult::new(job_id, JobStatus::Completed);
                                 } else {
                                     // capture error output

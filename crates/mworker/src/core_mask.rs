@@ -8,6 +8,8 @@
 /// corresponds to a core. A set bit (1) indicates an allocated core, while an unset bit (0) represents
 /// an available core.
 ///
+/// Why is this so complicated? I just felt like it...
+///
 /// ## Features
 ///
 /// - Allocate a specified number of cores

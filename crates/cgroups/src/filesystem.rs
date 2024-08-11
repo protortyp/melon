@@ -2,14 +2,14 @@ use std::fs;
 use std::io::Result;
 use std::path::Path;
 
-pub trait FileSystem {
+pub trait FileSystem: Send + Sync {
     fn create_dir_all(&self, path: &Path) -> Result<()>;
     fn write(&self, path: &Path, contents: &[u8]) -> Result<()>;
     fn append(&self, path: &Path, contents: &[u8]) -> Result<()>;
     fn read(&self, path: &Path) -> Result<Vec<u8>>;
     fn exists(&self, path: &Path) -> bool;
     fn read_to_string(&self, path: &Path) -> Result<String>;
-    fn remove_dir_all(&self, path: &Path) -> Result<()>;
+    fn remove_dir(&self, path: &Path) -> Result<()>;
 }
 
 pub struct RealFileSystem;
@@ -43,7 +43,7 @@ impl FileSystem for RealFileSystem {
         fs::read_to_string(path)
     }
 
-    fn remove_dir_all(&self, path: &Path) -> Result<()> {
-        fs::remove_dir_all(path)
+    fn remove_dir(&self, path: &Path) -> Result<()> {
+        fs::remove_dir(path)
     }
 }

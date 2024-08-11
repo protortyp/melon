@@ -321,7 +321,9 @@ name = "cgroups"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "melon-common",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

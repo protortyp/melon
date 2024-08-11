@@ -1,12 +1,12 @@
 use crate::error::{CGroupsError, Result};
 use crate::filesystem::{FileSystem, RealFileSystem};
+use melon_common::log;
 use std::path::{Path, PathBuf};
-/// # CGroups Management Module
+/// # CGroups V2 Management Module
 ///
 /// This module provides a high-level interface for managing Linux Control Groups (cgroups).
 /// It allows for easy creation and manipulation of cgroups, including setting CPU, memory,
 /// and I/O constraints, as well as adding processes to these groups.
-
 #[derive(Default)]
 pub struct CGroupsBuilder {
     name: Option<String>,
@@ -61,11 +61,45 @@ impl CGroupsBuilder {
 }
 
 pub struct CGroups {
+    /// The cgroup name
     pub name: String,
+    /// The allocated CPUs, eg. 0,1,4
     pub cpus: Option<String>,
+    /// The memory in bytes
     pub memory: Option<u64>,
+    /// The io limits
     pub io: Option<String>,
-    pub fs: Box<dyn FileSystem>,
+    /// Filesystem for testing
+    fs: Box<dyn FileSystem>,
+}
+
+impl Drop for CGroups {
+    fn drop(&mut self) {
+        // todo: handle errors
+        match self.remove() {
+            Ok(_) => {
+                log!(info, "Removed cgroup {}", self.name);
+            }
+            Err(CGroupsError::CGroupRemovalFailed(e)) => {
+                log!(error, "Could not remove cgroup {}", e.to_string());
+            }
+            Err(CGroupsError::NotRoot) => {
+                log!(
+                    error,
+                    "Could not remove cgroup {} without sudo privileges!",
+                    self.name,
+                );
+            }
+            Err(e) => {
+                log!(
+                    error,
+                    "Could not remove cgroup {} due to error {}",
+                    self.name,
+                    e.to_string()
+                );
+            }
+        }
+    }
 }
 
 impl CGroups {
@@ -73,31 +107,45 @@ impl CGroups {
         CGroupsBuilder::new()
     }
 
+    #[tracing::instrument(level = "info", name = "Create new cgroup" skip(self))]
     pub fn create(&self) -> Result<()> {
         let path = PathBuf::from("/sys/fs/cgroup").join(&self.name);
-        self.fs
-            .create_dir_all(&path)
-            .map_err(CGroupsError::CGroupCreationFailed)?;
+        self.fs.create_dir_all(&path).map_err(|e| {
+            let error_msg = format!("Failed to create directory at {:?}: {}", path, e);
+            log!(error, "{}", error_msg);
+            CGroupsError::CGroupCreationFailed(e)
+        })?;
 
         if let Some(cpus) = &self.cpus {
             self.fs
                 .write(&path.join("cpuset.cpus"), cpus.as_bytes())
-                .map_err(CGroupsError::CGroupWriteFailed)?;
+                .map_err(|e| {
+                    log!(error, "Could not write cpuset {}: {}", cpus, e.to_string());
+                    CGroupsError::CGroupWriteFailed(e)
+                })?;
         }
 
         if let Some(memory) = self.memory {
             self.fs
-                .write(
-                    &path.join("memory.limit_in_bytes"),
-                    memory.to_string().as_bytes(),
-                )
-                .map_err(CGroupsError::CGroupWriteFailed)?;
+                .write(&path.join("memory.max"), memory.to_string().as_bytes())
+                .map_err(|e| {
+                    log!(
+                        error,
+                        "Could not write memory {}: {}",
+                        memory,
+                        e.to_string()
+                    );
+                    CGroupsError::CGroupWriteFailed(e)
+                })?;
         }
 
         if let Some(io) = &self.io {
             self.fs
                 .write(&path.join("io.max"), io.as_bytes())
-                .map_err(CGroupsError::CGroupWriteFailed)?;
+                .map_err(|e| {
+                    log!(error, "Could not write IO {}: {}", io, e.to_string());
+                    CGroupsError::CGroupWriteFailed(e)
+                })?;
         }
 
         let mut controllers = Vec::new();
@@ -111,18 +159,28 @@ impl CGroups {
             controllers.push("+io");
         }
 
+        let parent_path = path.parent().unwrap_or(Path::new("/sys/fs/cgroup"));
         if !controllers.is_empty() {
             self.fs
                 .write(
-                    &path.join("cgroup.subtree_control"),
+                    &parent_path.join("cgroup.subtree_control"),
                     controllers.join(" ").as_bytes(),
                 )
-                .map_err(CGroupsError::CGroupWriteFailed)?;
+                .map_err(|e| {
+                    log!(
+                        error,
+                        "Could not enable controllers {:?}: {}",
+                        controllers,
+                        e
+                    );
+                    CGroupsError::CGroupWriteFailed(e)
+                })?;
         }
 
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", name = "Add process to cgroup" skip(self))]
     pub fn add_process(&self, pid: u32) -> Result<()> {
         let path = PathBuf::from("/sys/fs/cgroup")
             .join(&self.name)
@@ -133,10 +191,12 @@ impl CGroups {
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", name = "Remove cgroup" skip(self))]
     pub fn remove(&self) -> Result<()> {
         let path = PathBuf::from("/sys/fs/cgroup").join(&self.name);
 
         if !self.fs.exists(&path) {
+            log!(error, "Cgroup path does not exist {:?}", path);
             return Err(CGroupsError::CGroupRemovalFailed(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "Cgroup does not exist",
@@ -145,13 +205,15 @@ impl CGroups {
 
         // ceck if there are any running processes
         if self.has_running_processes(&path)? {
+            log!(error, "Cgroup has a running process!");
             return Err(CGroupsError::CGroupHasRunningProcesses);
         }
 
         // remove the cgroup directory
-        self.fs
-            .remove_dir_all(&path)
-            .map_err(CGroupsError::CGroupRemovalFailed)?;
+        self.fs.remove_dir(&path).map_err(|e| {
+            log!(error, "Could not remove directory: {}", e.to_string());
+            CGroupsError::CGroupRemovalFailed(e)
+        })?;
 
         Ok(())
     }
