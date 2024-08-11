@@ -19,11 +19,11 @@ Components that have been implemented so far:
 - [x] `mcancel` the cancel command
 - [x] `mextend` to extend jobs
 - [x] `mshow` a better job info command (to use instead of `mstat`)
+- [x] job info persistence
+- [x] cgroups management
 
 **Stuff that's missing:**
 
-- [x] job info persistence
-- [x] cgroups management
 - [ ] cgroups delegation (for non-privilged cgroups write access)
 - [ ] master node recovery
 - [ ] compute node recovery
