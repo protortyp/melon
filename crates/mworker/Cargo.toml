@@ -12,12 +12,14 @@ tracing = { workspace = true }
 tonic = { workspace = true }
 sysinfo = { workspace = true }
 num_cpus = { workspace = true }
-cgroups = { path = "../cgroups", optional = true }
 
 [[bin]]
 name = "mworker"
 path = "src/main.rs"
 
 [features]
-default = ["cgroups"]
+default = []
 cgroups = ["dep:cgroups"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+cgroups = { path = "../cgroups", optional = true }

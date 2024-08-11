@@ -26,7 +26,8 @@ Components that have been implemented so far:
 - [ ] master node recovery
 - [ ] compute node recovery
 - [ ] job info persistence
-- [ ] cgroups management
+- [x] cgroups management
+- [ ] cgroups delegation (for non-privilged cgroups write access)
 
 ## Getting Started
 
@@ -46,7 +47,9 @@ melond --port 8081 | bunyan
 
 ### Compute Nodes
 
-Then spin up a couple of `mworker` compute nodes. Currently the available resources are read from the environment but that will change in the future (MVP, remember?). On Linux, we use `cgroups` to limit the available resources per job, based on the memory and cpu requirements that were requested. On Mac/Windows we just yolo. In order to use `cgroups` make sure to run the `mworker` command with sudo. Almost all cool features from slurm are of course not implemented. But the basics will get you going. You can override the api endpoint and it's own port.
+Then spin up a couple of `mworker` compute nodes. Currently the available resources are read from the environment but that will change in the future. On Linux, we use `cgroups` to limit the available resources per job, based on the memory and cpu requirements that were requested. Resource limitations is thus not available on Mac/Windows.
+
+Currently, cgroup delegation is not implemented. Therefore, in order to use the `cgroups` feature, make sure to run the `mworker` command as privileged user. Almost all cool features from slurm are of course not implemented. But the basics will get you going. You can override the api endpoint and it's own port.
 
 ```bash
 # on linux
@@ -91,7 +94,7 @@ done
 You can override the api endpoint if needed. Just make sure to override the endpoint before you pass the script and it's arguments.
 
 ```bash
-mbatch --api_endpoint "http://[::1]:8080" my_job.sh arg1 arg2
+mbatch -a "http://[::1]:8080" my_job.sh arg1 arg2
 ```
 
 ### List Jobs
@@ -108,17 +111,17 @@ JOBID   NAME         USER   ST   TIME     NODES
 
 ### Extend Jobs 🥳🥳🥳
 
-To extend the requested time for a pending or running job (the reason for the existence of this whole project...). Again, the `--api_endpoint` override argument is available.
+To extend the requested time for a pending or running job (the reason for the existence of this whole project...). Again, the `--api_endpoint` / `-a` override argument is available.
 
 ```bash
 # extend by one hour
-mextend -j <job_id> -t 0-01-00
+mextend -j $JOBID -t 0-01-00
 
 # extend by one day
-mextend -j <job_id> -t 1-00-00
+mextend -j $JOBID -t 1-00-00
 
 # extend with override
-mextend -j <job_id> -t 1-00-00 --api_endpoint "http://[::1]:8080"
+mextend -j $JOBID -t 1-00-00 -a "http://[::1]:8080"
 ```
 
 ### Cancel Pending or Running Jobs
@@ -126,10 +129,41 @@ mextend -j <job_id> -t 1-00-00 --api_endpoint "http://[::1]:8080"
 To cancel a pending or running job:
 
 ```bash
-mcancel job_id
+mcancel $JOBID
 
 # or
-mcancel --api_endpoint "http://[::1]:8080" <job_id>
+mcancel -a "http://[::1]:8080" $JOBID
+```
+
+### `mshow`
+
+The get more detailed information about a past, pending or running job, `mshow` provides an easy to use interface.
+
+```bash
+mshow $JOBID
+ JOBID  NAME             USER   STATUS     SUBMIT DATE          START DATE           STOP DATE            NODES
+ 288    basic_script.sh  chris  Completed  2024-08-11 23:27:36  2024-08-11 23:27:47  2024-08-11 23:27:59  3eKNIu_I3XNlnIl_dRT12
+```
+
+To get the information in json, run `mshow $JOBID --parseable` or `mshow $JOBID -p`
+
+```json
+{
+  "id": 288,
+  "user": "chris",
+  "script_path": "./test_data/basic_script.sh",
+  "script_args": ["a", "b", "c"],
+  "req_res": {
+    "cpu_count": 1,
+    "memory": 1073741824,
+    "time": 360
+  },
+  "submit_time": 1723418856,
+  "start_time": 1723418867,
+  "stop_time": 1723418879,
+  "status": "Completed",
+  "assigned_node": "3eKNIu_I3XNlnIl_dRT12"
+}
 ```
 
 ## Contributing
