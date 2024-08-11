@@ -1,10 +1,12 @@
 use clap::Parser;
+use melon_common::telemetry::{get_subscriber, init_subscriber};
 use mworker::{worker::Worker, Args};
-use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Start worker");
+    let subscriber = get_subscriber("mworker".into(), "info".into(), std::io::stdout);
+    init_subscriber(subscriber);
+
     let args = Args::parse();
     let mut worker = Worker::new(&args)?;
 
@@ -19,13 +21,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // start the server
     worker.start_server().await?;
-
-    // fixme: just await on start_server
-    let h = worker.server_handle.take().unwrap();
-    let h = h.lock().await;
-    while !h.is_finished() {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
 
     Ok(())
 }

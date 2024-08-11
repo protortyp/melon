@@ -11,11 +11,15 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tonic = { workspace = true }
 sysinfo = { workspace = true }
-
-
-[target.'cfg(target_os = "linux")'.dependencies]
-cgroups-rs = { workspace = true }
+num_cpus = { workspace = true }
 
 [[bin]]
 name = "mworker"
 path = "src/main.rs"
+
+[features]
+default = []
+cgroups = ["dep:cgroups"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+cgroups = { path = "../cgroups", optional = true }

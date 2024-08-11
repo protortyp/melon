@@ -132,20 +132,22 @@ impl Scheduler {
                                 let node = nodes.get_mut(&node_id).unwrap();
 
                                 // submit the job to the node
-                                let mut client = MelonWorkerClient::connect(node.endpoint.clone()).await.expect("Could not connect to node");
-                                let req = tonic::Request::new(job.into());
-                                // if it worked, reduce the available resources
-                                if (client.assign_job(req).await).is_ok() {
-                                    // submission was successful => compute node started working
-                                    // reduce the available compute resources of the node
-                                    node.reduce_avail_resources(&job.req_res);
+                                // FIXME: handle fails
+                                if let Ok(mut client) = MelonWorkerClient::connect(node.endpoint.clone()).await{
+                                    let req = tonic::Request::new(job.into());
+                                    // if it worked, reduce the available resources
+                                    if (client.assign_job(req).await).is_ok() {
+                                        // submission was successful => compute node started working
+                                        // reduce the available compute resources of the node
+                                        node.reduce_avail_resources(&job.req_res);
 
-                                    // set the node id of the job
-                                    job.assigned_node = Some(node_id);
+                                        // set the node id of the job
+                                        job.assigned_node = Some(node_id);
 
-                                    // mark the job for removal
-                                    to_remove.push(index);
+                                        // mark the job for removal
+                                        to_remove.push(index);
 
+                                    }
                                 }
                             }
                         }
