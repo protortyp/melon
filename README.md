@@ -18,16 +18,15 @@ Components that have been implemented so far:
 - [x] `mqueue` see pending and running jobs
 - [x] `mcancel` the cancel command
 - [x] `mextend` to extend jobs
-- [x] `mshow` a better job info command
-- [ ] `mstat` the job status commands
+- [x] `mshow` a better job info command (to use instead of `mstat`)
 
 **Stuff that's missing:**
 
-- [ ] master node recovery
-- [ ] compute node recovery
-- [ ] job info persistence
+- [x] job info persistence
 - [x] cgroups management
 - [ ] cgroups delegation (for non-privilged cgroups write access)
+- [ ] master node recovery
+- [ ] compute node recovery
 
 ## Getting Started
 
