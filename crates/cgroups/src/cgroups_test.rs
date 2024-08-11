@@ -429,4 +429,142 @@ mod tests {
         let result = cgroup.remove();
         assert!(matches!(result, Err(CGroupsError::CGroupRemovalFailed(_))));
     }
+
+    #[test]
+    fn test_cgroup_creation_with_selective_failures() {
+        #[derive(Clone)]
+        struct SelectiveFailureMockFileSystem {
+            files: Arc<Mutex<HashMap<PathBuf, Vec<u8>>>>,
+            fail_on: Arc<Mutex<Option<String>>>,
+        }
+
+        impl SelectiveFailureMockFileSystem {
+            fn new() -> Self {
+                Self {
+                    files: Arc::new(Mutex::new(HashMap::new())),
+                    fail_on: Arc::new(Mutex::new(None)),
+                }
+            }
+
+            fn set_fail_on(&self, path_suffix: &str) {
+                let mut fail_on = self.fail_on.lock().unwrap();
+                *fail_on = Some(path_suffix.to_string());
+            }
+        }
+
+        impl FileSystem for SelectiveFailureMockFileSystem {
+            fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
+                let path = path.to_path_buf();
+                let mut files = self.files.lock().unwrap();
+                files.insert(path, Vec::new());
+                Ok(())
+            }
+
+            fn write(&self, path: &Path, contents: &[u8]) -> std::io::Result<()> {
+                let fail_on = self.fail_on.lock().unwrap();
+                if let Some(fail_path) = &*fail_on {
+                    if path.to_str().unwrap().ends_with(fail_path) {
+                        return Err(Error::new(ErrorKind::PermissionDenied, "Permission denied"));
+                    }
+                }
+                let path = path.to_path_buf();
+                let mut files = self.files.lock().unwrap();
+                files.insert(path, contents.to_vec());
+                Ok(())
+            }
+
+            fn append(&self, path: &Path, contents: &[u8]) -> std::io::Result<()> {
+                let path = path.to_path_buf();
+                let mut files = self.files.lock().unwrap();
+                files.entry(path).or_default().extend_from_slice(contents);
+                Ok(())
+            }
+
+            fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+                let path = path.to_path_buf();
+                let files = self.files.lock().unwrap();
+                files
+                    .get(&path)
+                    .cloned()
+                    .ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))
+            }
+
+            fn exists(&self, path: &Path) -> bool {
+                let files = self.files.lock().unwrap();
+                files.contains_key(&path.to_path_buf())
+            }
+
+            fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
+                let content = self.read(path)?;
+                String::from_utf8(content).map_err(|e| Error::new(ErrorKind::InvalidData, e))
+            }
+
+            fn remove_dir(&self, path: &Path) -> std::io::Result<()> {
+                let path = path.to_path_buf();
+                let mut files = self.files.lock().unwrap();
+                files.retain(|k, _| !k.starts_with(&path));
+                Ok(())
+            }
+        }
+
+        let mock_fs = SelectiveFailureMockFileSystem::new();
+
+        // Test cpuset.cpus write failure
+        {
+            mock_fs.set_fail_on("cpuset.cpus");
+            let cgroup = CGroups::build()
+                .name("test_cgroup")
+                .with_cpu("0-1")
+                .with_fs(mock_fs.clone())
+                .build()
+                .unwrap();
+
+            let result = cgroup.create();
+            assert!(matches!(result, Err(CGroupsError::CGroupWriteFailed(_))));
+        }
+
+        // Test memory.max write failure
+        {
+            mock_fs.set_fail_on("memory.max");
+            let cgroup = CGroups::build()
+                .name("test_cgroup")
+                .with_memory(1024 * 1024)
+                .with_fs(mock_fs.clone())
+                .build()
+                .unwrap();
+
+            let result = cgroup.create();
+            assert!(matches!(result, Err(CGroupsError::CGroupWriteFailed(_))));
+        }
+
+        // Test io.max write failure
+        {
+            mock_fs.set_fail_on("io.max");
+            let cgroup = CGroups::build()
+                .name("test_cgroup")
+                .with_io("8:0 rbps=1048576")
+                .with_fs(mock_fs.clone())
+                .build()
+                .unwrap();
+
+            let result = cgroup.create();
+            assert!(matches!(result, Err(CGroupsError::CGroupWriteFailed(_))));
+        }
+
+        // Test cgroup.subtree_control write failure
+        {
+            mock_fs.set_fail_on("cgroup.subtree_control");
+            let cgroup = CGroups::build()
+                .name("test_cgroup")
+                .with_cpu("0-1")
+                .with_memory(1024 * 1024)
+                .with_io("8:0 rbps=1048576")
+                .with_fs(mock_fs.clone())
+                .build()
+                .unwrap();
+
+            let result = cgroup.create();
+            assert!(matches!(result, Err(CGroupsError::CGroupWriteFailed(_))));
+        }
+    }
 }
