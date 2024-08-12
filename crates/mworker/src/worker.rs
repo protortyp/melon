@@ -322,9 +322,6 @@ impl Worker {
             // let cgroup = Arc::new(Mutex::new(None));
             // let cgroup_clone = Arc::clone(&cgroup);
 
-            let core_string = CoreMask::mask_to_string(allocated_mask);
-            log!(info, "Get core string {}", core_string);
-
             let mut child = match Command::new(&pth)
                 .args(&args)
                 .stdout(Stdio::piped())
@@ -340,6 +337,9 @@ impl Worker {
                 Some(id) => id,
                 None => return JobResult::new(job_id, JobStatus::Failed),
             };
+
+            #[cfg(feature = "cgroups")]
+            let core_string = CoreMask::mask_to_string(allocated_mask);
 
             #[cfg(feature = "cgroups")]
             let cgroup = match CGroups::build()
@@ -372,8 +372,6 @@ impl Worker {
                 );
                 return JobResult::new(job_id, JobStatus::Failed);
             }
-
-            log!(info, "Successfully created cgroup!");
 
             let mut deadline = Instant::now() + Duration::from_secs(initial_time_mins * 60);
             let mut stdout = BufReader::new(child.stdout.take().unwrap());
