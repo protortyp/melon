@@ -1,8 +1,9 @@
 use crate::{
     constants::*,
-    helpers::{get_job_submission, get_node_info, spawn_app, TestApp},
+    helpers::{get_job_submission, get_node_info, spawn_app, spawn_app_api_only, TestApp},
     mock_worker::setup_mock_worker,
 };
+use reqwest::StatusCode;
 use serde_json::Value;
 
 #[tokio::test]
@@ -38,6 +39,39 @@ async fn test_api_list_jobs() {
 
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_api_health_check() {
+    let app = spawn_app().await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!(
+            "http://{}:{}/api/health",
+            app.api_host, app.api_port
+        ))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.unwrap();
+    assert_eq!(body, "Ok");
+}
+
+#[tokio::test]
+async fn test_api_jobs_endpoint_with_unavailable_scheduler() {
+    let app = spawn_app_api_only().await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!("http://{}:{}/api/jobs", app.api_host, app.api_port))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), 503);
 }
 
 async fn submit_multiple_jobs(app: &TestApp, count: usize) -> Vec<u64> {
