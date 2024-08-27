@@ -3,3 +3,6 @@ application:
   host: "[::1]"
 database:
   path: ""
+api:
+  port: 0
+  host: "[::1]"

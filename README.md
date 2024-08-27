@@ -21,6 +21,7 @@ Components that have been implemented so far:
 - [x] `mshow` a better job info command (to use instead of `mstat`)
 - [x] job info persistence
 - [x] cgroups management
+- [x] UI
 
 **Stuff that's missing:**
 
@@ -163,6 +164,20 @@ To get the information in json, run `mshow $JOBID --parseable` or `mshow $JOBID 
   "status": "Completed",
   "assigned_node": "3eKNIu_I3XNlnIl_dRT12"
 }
+```
+
+### UI
+
+![Melon UI](ui.png)
+
+Right now, the UI keeps things simple by showing a list of jobs with all their details. It's pretty basic, but there are some plans for the future! Future features will let you do things like cancel jobs or give them more time to run.
+
+Run it with:
+
+```bash
+cd ui
+docker build -t melon-ui .
+docker run -p 80:80 melon-ui
 ```
 
 ## Contributing

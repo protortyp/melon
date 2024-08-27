@@ -1,3 +1,4 @@
+use crate::constants::*;
 use anyhow::Result;
 use melon_common::{
     configuration::get_configuration,
@@ -6,7 +7,7 @@ use melon_common::{
         NodeResources, RegistrationResponse,
     },
 };
-use melond::{application::Application, settings::Settings};
+use melond::{api::Api, application::Application, settings::Settings};
 use tempdir::TempDir;
 use tonic::Response;
 use uuid::Uuid;
@@ -16,6 +17,9 @@ pub struct TestApp {
     pub address: String,
     #[allow(dead_code)]
     pub port: u16,
+    #[allow(dead_code)]
+    pub api_host: String,
+    pub api_port: u16,
 }
 
 impl TestApp {
@@ -112,9 +116,16 @@ fn configure_common_settings(c: &mut Settings) {
     c.application.port = 0;
     c.database.path = db_path;
 }
-
 pub async fn spawn_app() -> TestApp {
     configure_and_spawn_app(|c: &mut Settings| {
+        configure_common_settings(c);
+    })
+    .await
+}
+
+// only run API to test unavailable scheduler deamon
+pub async fn spawn_app_api_only() -> TestApp {
+    configure_and_spawn_api(|c: &mut Settings| {
         configure_common_settings(c);
     })
     .await
@@ -124,7 +135,7 @@ async fn configure_and_spawn_app<F>(config_modifier: F) -> TestApp
 where
     F: FnOnce(&mut Settings),
 {
-    let settings = {
+    let mut settings = {
         let mut s = get_configuration().expect("Failed to read config");
         config_modifier(&mut s);
         s
@@ -134,12 +145,58 @@ where
         .await
         .expect("Failed to build application");
     let port = application.port();
+    settings.application.port = port;
 
-    tokio::spawn(async move { application.run_until_stopped().await });
+    let api = Api::new(settings.clone());
+    let api_addr = format!("{}:0", settings.api.host);
+    let api_listener = tokio::net::TcpListener::bind(&api_addr).await.unwrap();
+    let api_port = api_listener.local_addr().unwrap().port();
+
+    tokio::spawn(async move {
+        if let Err(e) = application.run_until_stopped().await {
+            println!("App shut down: {}", e);
+        }
+    });
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(api_listener, api.router()).await {
+            println!("API shut down: {}", e);
+        }
+    });
 
     TestApp {
         address: format!("http://{}:{}", settings.application.host, port),
         port,
+        api_host: settings.api.host,
+        api_port,
+    }
+}
+
+async fn configure_and_spawn_api<F>(config_modifier: F) -> TestApp
+where
+    F: FnOnce(&mut Settings),
+{
+    let settings = {
+        let mut s = get_configuration().expect("Failed to read config");
+        config_modifier(&mut s);
+        s
+    };
+
+    let api = Api::new(settings.clone());
+    let api_addr = format!("{}:0", settings.api.host);
+    let api_listener = tokio::net::TcpListener::bind(&api_addr).await.unwrap();
+    let api_port = api_listener.local_addr().unwrap().port();
+
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(api_listener, api.router()).await {
+            println!("API shut down: {}", e);
+        }
+    });
+
+    TestApp {
+        address: String::new(), // empty dummies
+        port: 0,
+        api_host: settings.api.host,
+        api_port,
     }
 }
 
@@ -151,5 +208,18 @@ pub fn get_node_info(port: u16) -> NodeInfo {
     NodeInfo {
         address: format!("http://[::1]:{}", port),
         resources: Some(resources),
+    }
+}
+
+pub fn get_job_submission() -> proto::JobSubmission {
+    proto::JobSubmission {
+        user: TEST_USER.to_string(),
+        script_path: TEST_SCRIPT_PATH.to_string(),
+        req_res: Some(proto::RequestedResources {
+            cpu_count: TEST_COU_COUNT,
+            memory: TEST_MEMORY_SIZE,
+            time: TEST_TIME_MINS,
+        }),
+        script_args: [].to_vec(),
     }
 }
