@@ -409,9 +409,21 @@ impl MelonScheduler for Scheduler {
         let pending_jobs = self.pending_jobs.lock().await;
         let running_jobs = self.running_jobs.lock().await;
 
-        // accumulate pending jobs
+        // Accumulate pending and running jobs
         let mut jobs: Vec<proto::Job> = pending_jobs.iter().map(|j| j.into()).collect();
         jobs.extend(running_jobs.values().map(|j| j.into()));
+
+        // Fetch finished jobs from the database
+        match self.db.get_all_jobs() {
+            Ok(finished_jobs) => {
+                jobs.extend(finished_jobs.iter().map(|j| j.into()));
+            }
+            Err(e) => {
+                log!(error, "Error fetching finished jobs from database: {}", e);
+                return Err(tonic::Status::internal("Failed to fetch finished jobs"));
+            }
+        }
+
         let response = proto::JobListResponse { jobs };
         let response = tonic::Response::new(response);
         Ok(response)

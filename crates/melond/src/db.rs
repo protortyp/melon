@@ -120,6 +120,34 @@ impl DatabaseHandler {
 
         Ok(max_id.unwrap_or(0))
     }
+
+    #[tracing::instrument(level = "debug", name = "Get all jobs from database", skip(self))]
+    pub fn get_all_jobs(&self) -> Result<Vec<Job>, Box<dyn std::error::Error>> {
+        let conn = Connection::open(self.db_path.clone())?;
+
+        let mut stmt = conn.prepare("SELECT * FROM jobs")?;
+        let job_iter = stmt.query_map([], |row| {
+            Ok(Job {
+                id: row.get(0)?,
+                user: row.get(1)?,
+                script_path: row.get(2)?,
+                script_args: serde_json::from_str(&row.get::<_, String>(3)?).unwrap(),
+                req_res: RequestedResources {
+                    cpu_count: row.get(4)?,
+                    memory: row.get(5)?,
+                    time: row.get(6)?,
+                },
+                submit_time: row.get(7)?,
+                start_time: row.get(8)?,
+                stop_time: row.get(9)?,
+                status: JobStatus::from(row.get::<_, i32>(10)?),
+                assigned_node: row.get(11)?,
+            })
+        })?;
+
+        let jobs: Result<Vec<Job>, _> = job_iter.collect();
+        Ok(jobs?)
+    }
 }
 
 #[tracing::instrument(level = "debug", name = "Insert finished job", skip(conn, job), fields(job_id = %job.id))]
