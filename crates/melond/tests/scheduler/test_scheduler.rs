@@ -1,18 +1,10 @@
-use crate::helpers::{get_node_info, spawn_app};
-use crate::mock_worker::MockWorker;
-use melon_common::proto::melon_worker_server::MelonWorkerServer;
+use crate::{
+    constants::*,
+    helpers::{get_job_submission, get_node_info, spawn_app},
+    mock_worker::setup_mock_worker,
+};
 use melon_common::{proto, JobStatus};
-use tokio::net::TcpListener;
-use tokio::sync::mpsc::{self};
-use tokio::sync::watch;
-use tonic::transport::Server;
 use tonic::Status;
-
-const TEST_MEMORY_SIZE: u64 = 2 * 1024 * 1024;
-const TEST_COU_COUNT: u32 = 1;
-const TEST_TIME_MINS: u32 = 1024;
-const TEST_SCRIPT_PATH: &str = "/path/to/script";
-const TEST_USER: &str = "chris";
 
 #[tokio::test]
 async fn worker_registration_works() {
@@ -88,58 +80,6 @@ async fn test_list_running_job() {
 
     mock_setup.server_notifier.send(()).unwrap();
     mock_setup.server_handle.await.unwrap();
-}
-
-struct MockWorkerSetup {
-    job_assignment_receiver: mpsc::Receiver<proto::JobAssignment>,
-    job_cancellation_receiver: mpsc::Receiver<proto::CancelJobRequest>,
-    server_notifier: watch::Sender<()>,
-    server_handle: tokio::task::JoinHandle<()>,
-    job_extension_receiver: mpsc::Receiver<proto::ExtendJobRequest>,
-    port: u16,
-}
-
-async fn setup_mock_worker() -> MockWorkerSetup {
-    let (job_assignment_sender, job_assignment_receiver) = mpsc::channel(1);
-    let (job_cancellation_sender, job_cancellation_receiver) = mpsc::channel(1);
-    let (server_notifier, server_notifier_rx) = watch::channel(());
-    let (job_extension_sender, job_extension_receiver) = mpsc::channel(1);
-
-    let worker = MockWorker::new(
-        job_assignment_sender.clone(),
-        job_cancellation_sender.clone(),
-        job_extension_sender.clone(),
-    )
-    .await
-    .unwrap();
-
-    let addr = String::from("[::1]:0");
-    let listener = TcpListener::bind(&addr).await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-
-    let mut shutdown_rx = server_notifier_rx.clone();
-
-    let server_handle = tokio::spawn(async move {
-        Server::builder()
-            .add_service(MelonWorkerServer::new(worker))
-            .serve_with_incoming_shutdown(
-                tokio_stream::wrappers::TcpListenerStream::new(listener),
-                async {
-                    shutdown_rx.changed().await.ok();
-                },
-            )
-            .await
-            .unwrap();
-    });
-
-    MockWorkerSetup {
-        job_assignment_receiver,
-        job_cancellation_receiver,
-        server_notifier,
-        server_handle,
-        job_extension_receiver,
-        port,
-    }
 }
 
 #[tokio::test]
@@ -567,18 +507,5 @@ async fn test_mshow_unknown_id() {
         } else {
             panic!("Error is not a tonic::Status: {:?}", e);
         }
-    }
-}
-
-fn get_job_submission() -> proto::JobSubmission {
-    proto::JobSubmission {
-        user: TEST_USER.to_string(),
-        script_path: TEST_SCRIPT_PATH.to_string(),
-        req_res: Some(proto::RequestedResources {
-            cpu_count: TEST_COU_COUNT,
-            memory: TEST_MEMORY_SIZE,
-            time: TEST_TIME_MINS,
-        }),
-        script_args: [].to_vec(),
     }
 }

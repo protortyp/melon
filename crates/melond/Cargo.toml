@@ -20,12 +20,14 @@ serde-aux = { workspace = true }
 tokio-stream =  { workspace = true }
 axum = { workspace = true, optional = true }
 tower-http = {workspace = true, optional = true}
+thiserror = {workspace = true}
 
 [dev-dependencies]
 tempdir = { workspace = true }
 assert_cmd = {workspace = true}
 predicates = {workspace = true}
 uuid = {workspace = true}
+reqwest = {workspace = true}
 
 [lib]
 name = "melond"
