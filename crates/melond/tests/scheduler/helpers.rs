@@ -146,13 +146,11 @@ where
     let api_port = api_listener.local_addr().unwrap().port();
 
     tokio::spawn(async move {
-        println!("App starting");
         if let Err(e) = application.run_until_stopped().await {
             println!("App shut down: {}", e);
         }
     });
     tokio::spawn(async move {
-        println!("API Starting on {:?}", api_listener);
         if let Err(e) = axum::serve(api_listener, api.router()).await {
             println!("API shut down: {}", e);
         }

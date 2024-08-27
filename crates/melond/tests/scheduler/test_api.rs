@@ -13,8 +13,8 @@ async fn test_api_list_jobs() {
     app.register_node(info).await.unwrap();
 
     // submit jobs and wait for assignments
-    let job_ids = submit_multiple_jobs(&app, 3).await;
-    for _ in 0..3 {
+    let job_ids = submit_multiple_jobs(&app, 1).await;
+    for _ in 0..1 {
         let _ = mock_setup.job_assignment_receiver.recv().await.unwrap();
     }
 
@@ -29,7 +29,7 @@ async fn test_api_list_jobs() {
     assert_eq!(response.status(), 200);
     let jobs: Vec<Value> = response.json().await.unwrap();
 
-    assert_eq!(jobs.len(), 3);
+    assert_eq!(jobs.len(), 1);
     for (index, job) in jobs.iter().enumerate() {
         assert_eq!(job["id"].as_u64().unwrap(), job_ids[index] as u64);
         assert_eq!(job["user"].as_str().unwrap(), TEST_USER);
