@@ -49,3 +49,5 @@ colored = "2.0"
 num_cpus = "1"
 thiserror = "1.0"
 anyhow = "1.0"
+axum = "0.7.5"
+tower-http = { version = "0.5.2", features = ["cors"] }
