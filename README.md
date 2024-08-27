@@ -172,6 +172,14 @@ To get the information in json, run `mshow $JOBID --parseable` or `mshow $JOBID 
 
 Right now, the UI keeps things simple by showing a list of jobs with all their details. It's pretty basic, but there are some plans for the future! Future features will let you do things like cancel jobs or give them more time to run.
 
+Run it with:
+
+```bash
+cd ui
+docker build -t melon-ui .
+docker run -p 80:80 melon-ui
+```
+
 ## Contributing
 
 If you're using the devcontainer, make sure to enable `ipv6` in your docker engine.
