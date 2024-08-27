@@ -15,23 +15,25 @@ impl Api {
     pub fn new(settings: Settings) -> Self {
         Self { settings }
     }
-
-    pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn router(&self) -> Router {
         let cors = CorsLayer::new()
             .allow_origin(Any)
             .allow_methods([Method::GET])
             .allow_headers(Any);
 
-        let app = Router::new()
+        Router::new()
             .route("/api/jobs", get(Self::get_jobs))
             .route("/api/health", get(Self::health_check))
-            .layer(cors);
+            .layer(cors)
+            .with_state(Arc::new(self.settings.clone()))
+    }
 
+    pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         let addr: SocketAddr = format!("{}:{}", self.settings.api.host, self.settings.api.port)
             .parse()
             .expect("Failed to parse socket address");
         let listener = tokio::net::TcpListener::bind(&addr).await?;
-        axum::serve(listener, app.with_state(Arc::new(self.settings.clone()))).await?;
+        axum::serve(listener, self.router()).await?;
         Ok(())
     }
 

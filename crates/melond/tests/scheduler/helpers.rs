@@ -6,7 +6,7 @@ use melon_common::{
         NodeResources, RegistrationResponse,
     },
 };
-use melond::{application::Application, settings::Settings};
+use melond::{api::Api, application::Application, settings::Settings};
 use tempdir::TempDir;
 use tonic::Response;
 use uuid::Uuid;
@@ -16,6 +16,8 @@ pub struct TestApp {
     pub address: String,
     #[allow(dead_code)]
     pub port: u16,
+    pub api_address: String,
+    pub api_port: u16,
 }
 
 impl TestApp {
@@ -135,11 +137,21 @@ where
         .expect("Failed to build application");
     let port = application.port();
 
+    let api = Api::new(settings.clone());
+    let api_addr = format!("{}:0", settings.api.host);
+    let api_listener = tokio::net::TcpListener::bind(&api_addr).await.unwrap();
+    let api_port = api_listener.local_addr().unwrap().port();
+
     tokio::spawn(async move { application.run_until_stopped().await });
+    tokio::spawn(async move {
+        axum::serve(api_listener, api.router()).await.unwrap();
+    });
 
     TestApp {
         address: format!("http://{}:{}", settings.application.host, port),
         port,
+        api_address: format!("http://{}:{}", settings.api.host, api_port),
+        api_port,
     }
 }
 
