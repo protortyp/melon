@@ -9,7 +9,9 @@ use melond::{api::Api, application::Application, db::get_prod_database_path, set
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut settings: Settings = get_configuration().expect("Failed to read configuration.");
-    settings.database.path = get_prod_database_path();
+    if settings.database.path.is_empty() {
+        settings.database.path = get_prod_database_path();
+    }
 
     let subscriber = get_subscriber("melond".into(), "info".into(), std::io::stdout);
     init_subscriber(subscriber);

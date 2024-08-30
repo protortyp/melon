@@ -63,13 +63,14 @@ Create the configuration file with your preferred settings:
 
 ```bash
 sudo mkdir /var/lib/melon
+sudo chown -R melond:melond /var/lib/melon
 sudo cp crates/melond/configuration/base.yaml /var/lib/melon
 sudo tee /var/lib/melon/production.yaml > /dev/null << EOF
 application:
   port: 8080
   host: "127.0.0.1"
 database:
-  path: "/var/lib/melon/db.sqlite"
+  path: "/var/lib/melon/melon.sqlite"
 api:
   port: 8088
   host: "127.0.0.1"
