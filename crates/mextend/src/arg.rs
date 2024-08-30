@@ -13,7 +13,7 @@ pub struct Args {
     pub api_endpoint: String,
 
     /// The job id
-    #[arg(short = 'j', long = "job")]
+    #[arg()]
     pub job: u64,
 
     /// Time extension in D-HH-MM format
