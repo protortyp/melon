@@ -2,6 +2,9 @@ use crate::error::{CGroupsError, Result};
 use crate::filesystem::{FileSystem, RealFileSystem};
 use melon_common::log;
 use std::path::{Path, PathBuf};
+
+const BASE_CGROUP_PATH: &str = "/sys/fs/cgroup/melon";
+
 /// # CGroups V2 Management Module
 ///
 /// This module provides a high-level interface for managing Linux Control Groups (cgroups).
@@ -109,7 +112,7 @@ impl CGroups {
 
     #[tracing::instrument(level = "info", name = "Create new cgroup" skip(self))]
     pub fn create(&self) -> Result<()> {
-        let path = PathBuf::from("/sys/fs/cgroup").join(&self.name);
+        let path = PathBuf::from(BASE_CGROUP_PATH).join(&self.name);
         self.fs.create_dir_all(&path).map_err(|e| {
             let error_msg = format!("Failed to create directory at {:?}: {}", path, e);
             log!(error, "{}", error_msg);
@@ -159,7 +162,7 @@ impl CGroups {
             controllers.push("+io");
         }
 
-        let parent_path = path.parent().unwrap_or(Path::new("/sys/fs/cgroup"));
+        let parent_path = path.parent().unwrap_or(Path::new(BASE_CGROUP_PATH));
         if !controllers.is_empty() {
             self.fs
                 .write(
@@ -182,7 +185,7 @@ impl CGroups {
 
     #[tracing::instrument(level = "info", name = "Add process to cgroup" skip(self))]
     pub fn add_process(&self, pid: u32) -> Result<()> {
-        let path = PathBuf::from("/sys/fs/cgroup")
+        let path = PathBuf::from(BASE_CGROUP_PATH)
             .join(&self.name)
             .join("cgroup.procs");
         self.fs
@@ -193,7 +196,7 @@ impl CGroups {
 
     #[tracing::instrument(level = "info", name = "Remove cgroup" skip(self))]
     pub fn remove(&self) -> Result<()> {
-        let path = PathBuf::from("/sys/fs/cgroup").join(&self.name);
+        let path = PathBuf::from(BASE_CGROUP_PATH).join(&self.name);
 
         if !self.fs.exists(&path) {
             log!(error, "Cgroup path does not exist {:?}", path);

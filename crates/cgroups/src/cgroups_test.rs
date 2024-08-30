@@ -83,7 +83,7 @@ mod tests {
     }
 
     fn setup_cgroup(mock_fs: &MockFileSystem, name: &str) {
-        let cgroup_path = PathBuf::from("/sys/fs/cgroup").join(name);
+        let cgroup_path = PathBuf::from("/sys/fs/cgroup/melon").join(name);
         mock_fs
             .files
             .lock()
@@ -132,34 +132,34 @@ mod tests {
         assert!(cgroup.create().is_ok());
 
         assert!(mock_fs
-            .read(Path::new("/sys/fs/cgroup/test_cgroup"))
+            .read(Path::new("/sys/fs/cgroup/melon/test_cgroup"))
             .is_ok());
 
         // verify settings
         let cpu_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/test_cgroup/cpuset.cpus"))
+                .read(Path::new("/sys/fs/cgroup/melon/test_cgroup/cpuset.cpus"))
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(cpu_content, "0-1");
         let memory_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/test_cgroup/memory.max"))
+                .read(Path::new("/sys/fs/cgroup/melon/test_cgroup/memory.max"))
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(memory_content, "1048576");
         let io_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/test_cgroup/io.max"))
+                .read(Path::new("/sys/fs/cgroup/melon/test_cgroup/io.max"))
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(io_content, "8:0 rbps=1048576");
         let controllers_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/cgroup.subtree_control"))
+                .read(Path::new("/sys/fs/cgroup/melon/cgroup.subtree_control"))
                 .unwrap(),
         )
         .unwrap();
@@ -181,23 +181,23 @@ mod tests {
         // verify settings
         let cpu_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/test_cgroup/cpuset.cpus"))
+                .read(Path::new("/sys/fs/cgroup/melon/test_cgroup/cpuset.cpus"))
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(cpu_content, "0-1");
         let controllers_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/cgroup.subtree_control"))
+                .read(Path::new("/sys/fs/cgroup/melon/cgroup.subtree_control"))
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(controllers_content, "+cpuset");
         assert!(mock_fs
-            .read(Path::new("/sys/fs/cgroup/test_cgroup/memory.max"))
+            .read(Path::new("/sys/fs/cgroup/melon/test_cgroup/memory.max"))
             .is_err());
         assert!(mock_fs
-            .read(Path::new("/sys/fs/cgroup/test_cgroup/io.max"))
+            .read(Path::new("/sys/fs/cgroup/melon/test_cgroup/io.max"))
             .is_err());
     }
 
@@ -217,7 +217,7 @@ mod tests {
 
         let procs_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/test_cgroup/cgroup.procs"))
+                .read(Path::new("/sys/fs/cgroup/melon/test_cgroup/cgroup.procs"))
                 .unwrap(),
         )
         .unwrap();
@@ -311,7 +311,7 @@ mod tests {
             .unwrap();
 
         assert!(cgroup.remove().is_ok());
-        assert!(!mock_fs.exists(&PathBuf::from("/sys/fs/cgroup/test_cgroup")));
+        assert!(!mock_fs.exists(&PathBuf::from("/sys/fs/cgroup/melon/test_cgroup")));
     }
 
     #[test]
@@ -408,7 +408,7 @@ mod tests {
         }
 
         let mock_fs = FailingMockFileSystem::new();
-        let cgroup_path = PathBuf::from("/sys/fs/cgroup/test_cgroup");
+        let cgroup_path = PathBuf::from("/sys/fs/cgroup/melon/test_cgroup");
         mock_fs
             .files
             .lock()
