@@ -51,6 +51,13 @@ Melon is a lightweight distributed job scheduler written in Rust, inspired by Sl
    - Cancel job: `mcancel $JOBID`
    - Show job details: `mshow $JOBID` or `mshow $JOBID -p` for json output
 
+6. Start the UI:
+    ```bash
+    cd ui
+    docker build -t melon-ui .
+    docker run -p 80:80 melon-ui
+    ```
+
 ## Setting up the Scheduler
 
 Create a new user `melond`:
