@@ -123,9 +123,7 @@ After=network.target
 [Service]
 Environment=MELOND_ENDPOINT=127.0.0.1:8080
 Environment=MWORKER_PORT=8082
-Environment=APP_ENVIRONMENT=production
 Environment=RUST_LOG=info
-Environment="CONFIG_PATH=/path/to/config/folder"
 ExecStart=/usr/local/bin/mworker --api_endpoint ${MELOND_ENDPOINT} --port ${MWORKER_PORT}
 User=mworker
 Group=mworker
