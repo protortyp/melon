@@ -83,7 +83,7 @@ mod tests {
     }
 
     fn setup_cgroup(mock_fs: &MockFileSystem, name: &str) {
-        let cgroup_path = PathBuf::from("/sys/fs/cgroup").join(name);
+        let cgroup_path = PathBuf::from("/sys/fs/cgroup/melon").join(name);
         mock_fs
             .files
             .lock()
