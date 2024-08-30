@@ -159,7 +159,7 @@ mod tests {
         assert_eq!(io_content, "8:0 rbps=1048576");
         let controllers_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/cgroup.subtree_control"))
+                .read(Path::new("/sys/fs/cgroup/melon/cgroup.subtree_control"))
                 .unwrap(),
         )
         .unwrap();
@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(cpu_content, "0-1");
         let controllers_content = String::from_utf8(
             mock_fs
-                .read(Path::new("/sys/fs/cgroup/cgroup.subtree_control"))
+                .read(Path::new("/sys/fs/cgroup/melon/cgroup.subtree_control"))
                 .unwrap(),
         )
         .unwrap();
