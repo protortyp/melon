@@ -96,6 +96,14 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
+Start and enable the scheduler:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl start melond
+sudo systemctl enable melond
+```
+
 ## Setting up the Worker Cgroups Permissions
 
 Run the setup script using sudo:
