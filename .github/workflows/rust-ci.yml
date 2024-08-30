@@ -110,8 +110,9 @@ jobs:
     needs: [check, clippy, fmt, fmt-nightly, test, coverage]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: read
+      discussions: write
     steps:
       - uses: actions/checkout@v4
         with:
