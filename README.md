@@ -14,19 +14,22 @@ Melon is a lightweight distributed job scheduler written in Rust, inspired by Sl
 
 ## Quick Start
 
-1. Install tools to `/usr/local/bin`
+0. Get the repo
+
+   ```bash
+   git clone git@github.com:protortyp/melon.git
+   cd melon
+   ```
+
+1. Install tools to `/usr/local/bin` (will ask for `sudo` access to move the tools to `/usr/local/bin/`)
 
    ```
-   sudo install-all.sh
+   install.sh
    ```
 
-2. Set up the worker (see [Setting up the Worker](#setting-up-the-worker-cgroups-permissions))
+2. Set up the scheduler daemon (see [Setting up the scheduler](#setting-up-the-scheduler))
 
-3. Start the daemon:
-
-   ```
-   melond --port 8081
-   ```
+3. Set up the worker (see [Setting up the Worker](#setting-up-the-worker-cgroups-permissions))
 
 4. Submit a job:
 
@@ -47,6 +50,51 @@ Melon is a lightweight distributed job scheduler written in Rust, inspired by Sl
    - Extend job time: `mextend $JOBID -t 1-00-00`
    - Cancel job: `mcancel $JOBID`
    - Show job details: `mshow $JOBID` or `mshow $JOBID -p` for json output
+
+## Setting up the Scheduler
+
+Create a new user `melond`:
+
+```bash
+sudo adduser melond --no-create-home --disabled-login
+```
+
+Create the configuration file with your preferred settings:
+
+```bash
+sudo mkdir /var/lib/melon
+sudo cp crates/melond/configuration/base.yaml /var/lib/melon
+sudo tee /var/lib/melon/production.yaml > /dev/null << EOF
+application:
+  port: 8080
+  host: "127.0.0.1"
+database:
+  path: "/var/lib/melon/db.sqlite"
+api:
+  port: 8088
+  host: "127.0.0.1"
+EOF
+```
+
+Then, create a new file `/etc/systemd/system/melond.service` with the following content.
+
+```
+[Unit]
+Description=Melon Scheduler
+After=network.target
+
+[Service]
+Environment=APP_ENVIRONMENT=production
+Environment=RUST_LOG=info
+Environment="CONFIG_PATH=/var/lib/melon"
+ExecStart=/usr/local/bin/melond
+User=melond
+Group=melond
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ## Setting up the Worker Cgroups Permissions
 
