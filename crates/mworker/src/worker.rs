@@ -294,11 +294,19 @@ impl Worker {
         let (tx, mut rx) = mpsc::channel::<Duration>(10);
         self.deadline_notifiers.lock().await.insert(job_id, tx);
         let initial_time_mins = job.req_res.expect("Could not get resources").time as u64;
-
         let pth = job.script_path.clone();
         let args = job.script_args.clone();
         let resources = job.req_res.unwrap();
         let cores_needed = resources.cpu_count;
+
+        log!(
+            info,
+            "Spawn script at: {}, args: {:?}, resources: {:?}, cores needed: {}",
+            pth,
+            args,
+            resources,
+            cores_needed
+        );
 
         let allocated_mask = {
             let mut core_mask = self.core_mask.lock().await;
@@ -329,7 +337,10 @@ impl Worker {
                 .spawn()
             {
                 Ok(child) => child,
-                Err(_) => return JobResult::new(job_id, JobStatus::Failed),
+                Err(e) => {
+                    log!(error, "Could not spawn command {}", e);
+                    return JobResult::new(job_id, JobStatus::Failed);
+                }
             };
 
             #[cfg(feature = "cgroups")]
