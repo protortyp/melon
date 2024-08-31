@@ -119,6 +119,35 @@ impl CGroups {
             CGroupsError::CGroupCreationFailed(e)
         })?;
 
+        let mut controllers = Vec::new();
+        if self.cpus.is_some() {
+            controllers.push("+cpuset");
+        }
+        if self.memory.is_some() {
+            controllers.push("+memory");
+        }
+        if self.io.is_some() {
+            controllers.push("+io");
+        }
+
+        if !controllers.is_empty() {
+            self.fs
+                .write(
+                    &path.join("cgroup.subtree_control"),
+                    controllers.join(" ").as_bytes(),
+                )
+                .map_err(|e| {
+                    log!(
+                        error,
+                        "Could not enable controllers {:?}: {}",
+                        controllers,
+                        e
+                    );
+                    CGroupsError::CGroupWriteFailed(e)
+                })?;
+        }
+
+        // Write individual controller settings
         if let Some(cpus) = &self.cpus {
             self.fs
                 .write(&path.join("cpuset.cpus"), cpus.as_bytes())
@@ -147,35 +176,6 @@ impl CGroups {
                 .write(&path.join("io.max"), io.as_bytes())
                 .map_err(|e| {
                     log!(error, "Could not write IO {}: {}", io, e.to_string());
-                    CGroupsError::CGroupWriteFailed(e)
-                })?;
-        }
-
-        let mut controllers = Vec::new();
-        if self.cpus.is_some() {
-            controllers.push("+cpuset");
-        }
-        if self.memory.is_some() {
-            controllers.push("+memory");
-        }
-        if self.io.is_some() {
-            controllers.push("+io");
-        }
-
-        let parent_path = path.parent().unwrap_or(Path::new(BASE_CGROUP_PATH));
-        if !controllers.is_empty() {
-            self.fs
-                .write(
-                    &parent_path.join("cgroup.subtree_control"),
-                    controllers.join(" ").as_bytes(),
-                )
-                .map_err(|e| {
-                    log!(
-                        error,
-                        "Could not enable controllers {:?}: {}",
-                        controllers,
-                        e
-                    );
                     CGroupsError::CGroupWriteFailed(e)
                 })?;
         }
