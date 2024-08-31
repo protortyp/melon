@@ -121,7 +121,7 @@ impl CGroups {
 
         let mut controllers = Vec::new();
         if self.cpus.is_some() {
-            controllers.push("+cpuset");
+            controllers.push("+cpu");
         }
         if self.memory.is_some() {
             controllers.push("+memory");
@@ -131,6 +131,12 @@ impl CGroups {
         }
 
         if !controllers.is_empty() {
+            log!(
+                info,
+                "Writing controllers {:?} to {:?}",
+                controllers,
+                path.join("cgroup.subtree_control")
+            );
             self.fs
                 .write(
                     &path.join("cgroup.subtree_control"),
