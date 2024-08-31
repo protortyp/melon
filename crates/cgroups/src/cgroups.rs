@@ -153,7 +153,6 @@ impl CGroups {
                 })?;
         }
 
-        // Write individual controller settings
         if let Some(cpus) = &self.cpus {
             self.fs
                 .write(&path.join("cpuset.cpus"), cpus.as_bytes())
