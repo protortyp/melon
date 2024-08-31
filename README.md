@@ -19,10 +19,6 @@ Melon is a lightweight distributed job scheduler written in Rust, inspired by Sl
    ```bash
    git clone git@github.com:protortyp/melon.git
    cd melon
-   sudo groupadd melon_group
-
-   # (optional) add the current user to the group
-   sudo usermod -aG melon_group $USER
    ```
 
 1. Install tools to `/usr/local/bin` (will ask for `sudo` access to move the tools to `/usr/local/bin/`)
@@ -102,7 +98,6 @@ Environment=RUST_LOG=info
 Environment="CONFIG_PATH=/var/lib/melon"
 ExecStart=/usr/local/bin/melond
 User=melond
-Group=melon_group
 Restart=always
 
 [Install]
@@ -115,12 +110,6 @@ Start and enable the scheduler:
 sudo systemctl daemon-reload
 sudo systemctl start melond
 sudo systemctl enable melond
-```
-
-Finally, add the user to the group:
-
-```bash
-sudo usermod -a -G melon_group melond
 ```
 
 ## Setting up the Worker Cgroups Permissions
@@ -144,7 +133,6 @@ Environment=MWORKER_PORT=8082
 Environment=RUST_LOG=info
 ExecStart=/usr/local/bin/mworker --api_endpoint ${MELOND_ENDPOINT} --port ${MWORKER_PORT}
 User=mworker
-Group=melon_group
 Restart=always
 
 [Install]
@@ -165,8 +153,11 @@ You can check the status of the service with:
 sudo systemctl status mworker
 ```
 
-Finally, add the user to the group:
+Finally, allow the worker to read from directories using ACLs:
 
 ```bash
-sudo usermod -a -G melon_group mworker
+sudo setfacl -R -m u:mworker:rx /home
+sudo setfacl -R -d -m u:mworker:rx /home
 ```
+
+This will allow the `mworker` to read job files created by users.
