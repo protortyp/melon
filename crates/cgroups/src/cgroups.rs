@@ -121,7 +121,7 @@ impl CGroups {
 
         let mut controllers = Vec::new();
         if self.cpus.is_some() {
-            controllers.push("+cpu");
+            controllers.push("+cpuset");
         }
         if self.memory.is_some() {
             controllers.push("+memory");
