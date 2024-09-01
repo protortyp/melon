@@ -256,14 +256,6 @@ impl Scheduler {
         }
         None
     }
-
-    #[tracing::instrument(level = "info", name = "Init job counter", skip(self))]
-    fn init_job_ctr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let ctr = self.db.get_highest_job_id()? + 1;
-        log!(debug, "Set job counter to {}", ctr);
-        self.job_ctr.store(ctr, std::sync::atomic::Ordering::SeqCst);
-        Ok(())
-    }
 }
 
 #[tonic::async_trait]
