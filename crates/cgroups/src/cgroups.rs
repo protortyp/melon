@@ -65,15 +65,37 @@ impl CGroupsBuilder {
 
 pub struct CGroups {
     /// The cgroup name
-    pub name: String,
+    name: String,
     /// The allocated CPUs, eg. 0,1,4
-    pub cpus: Option<String>,
+    cpus: Option<String>,
     /// The memory in bytes
-    pub memory: Option<u64>,
+    memory: Option<u64>,
     /// The io limits
-    pub io: Option<String>,
+    io: Option<String>,
     /// Filesystem for testing
     fs: Box<dyn FileSystem>,
+}
+
+impl CGroups {
+    /// Get the cgroup name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the allocated CPUs
+    pub fn cpus(&self) -> Option<&str> {
+        self.cpus.as_deref()
+    }
+
+    /// Get the memory in bytes
+    pub fn memory(&self) -> Option<u64> {
+        self.memory
+    }
+
+    /// Get the io limits
+    pub fn io(&self) -> Option<&str> {
+        self.io.as_deref()
+    }
 }
 
 impl Drop for CGroups {
@@ -119,6 +141,40 @@ impl CGroups {
             CGroupsError::CGroupCreationFailed(e)
         })?;
 
+        let mut controllers = Vec::new();
+        if self.cpus.is_some() {
+            controllers.push("+cpuset");
+        }
+        if self.memory.is_some() {
+            controllers.push("+memory");
+        }
+        if self.io.is_some() {
+            controllers.push("+io");
+        }
+
+        if !controllers.is_empty() {
+            log!(
+                info,
+                "Writing controllers {:?} to {:?}",
+                controllers,
+                path.join("cgroup.subtree_control")
+            );
+            self.fs
+                .write(
+                    &path.join("cgroup.subtree_control"),
+                    controllers.join(" ").as_bytes(),
+                )
+                .map_err(|e| {
+                    log!(
+                        error,
+                        "Could not enable controllers {:?}: {}",
+                        controllers,
+                        e
+                    );
+                    CGroupsError::CGroupWriteFailed(e)
+                })?;
+        }
+
         if let Some(cpus) = &self.cpus {
             self.fs
                 .write(&path.join("cpuset.cpus"), cpus.as_bytes())
@@ -147,35 +203,6 @@ impl CGroups {
                 .write(&path.join("io.max"), io.as_bytes())
                 .map_err(|e| {
                     log!(error, "Could not write IO {}: {}", io, e.to_string());
-                    CGroupsError::CGroupWriteFailed(e)
-                })?;
-        }
-
-        let mut controllers = Vec::new();
-        if self.cpus.is_some() {
-            controllers.push("+cpuset");
-        }
-        if self.memory.is_some() {
-            controllers.push("+memory");
-        }
-        if self.io.is_some() {
-            controllers.push("+io");
-        }
-
-        let parent_path = path.parent().unwrap_or(Path::new(BASE_CGROUP_PATH));
-        if !controllers.is_empty() {
-            self.fs
-                .write(
-                    &parent_path.join("cgroup.subtree_control"),
-                    controllers.join(" ").as_bytes(),
-                )
-                .map_err(|e| {
-                    log!(
-                        error,
-                        "Could not enable controllers {:?}: {}",
-                        controllers,
-                        e
-                    );
                     CGroupsError::CGroupWriteFailed(e)
                 })?;
         }

@@ -14,24 +14,24 @@ Melon is a lightweight distributed job scheduler written in Rust, inspired by Sl
 
 ## Quick Start
 
-0. Get the repo
+1. Clone the repo
 
    ```bash
    git clone git@github.com:protortyp/melon.git
    cd melon
    ```
 
-1. Install tools to `/usr/local/bin` (will ask for `sudo` access to move the tools to `/usr/local/bin/`)
+2. Install tools to `/usr/local/bin` (will ask for `sudo` access to move the tools to `/usr/local/bin/`)
 
    ```
    install.sh
    ```
 
-2. Set up the scheduler daemon (see [Setting up the scheduler](#setting-up-the-scheduler))
+3. Set up the scheduler daemon (see [Setting up the scheduler](#setting-up-the-scheduler))
 
-3. Set up the worker (see [Setting up the Worker](#setting-up-the-worker-cgroups-permissions))
+4. Set up the worker (see [Setting up the Worker](#setting-up-the-worker-cgroups-permissions))
 
-4. Submit a job:
+5. Submit a job:
 
    ```bash
    echo '#!/bin/bash
@@ -45,18 +45,19 @@ Melon is a lightweight distributed job scheduler written in Rust, inspired by Sl
    mbatch job.sh
    ```
 
-5. Manage jobs:
+6. Manage jobs:
+
    - List jobs: `mqueue`
    - Extend job time: `mextend $JOBID -t 1-00-00`
    - Cancel job: `mcancel $JOBID`
    - Show job details: `mshow $JOBID` or `mshow $JOBID -p` for json output
 
-6. Start the UI:
-    ```bash
-    cd ui
-    docker build -t melon-ui .
-    docker run -p 80:80 melon-ui
-    ```
+7. Start the UI:
+   ```bash
+   cd ui
+   docker build -t melon-ui .
+   docker run -p 80:80 melon-ui
+   ```
 
 ## Setting up the Scheduler
 
@@ -97,7 +98,6 @@ Environment=RUST_LOG=info
 Environment="CONFIG_PATH=/var/lib/melon"
 ExecStart=/usr/local/bin/melond
 User=melond
-Group=melond
 Restart=always
 
 [Install]
@@ -133,7 +133,6 @@ Environment=MWORKER_PORT=8082
 Environment=RUST_LOG=info
 ExecStart=/usr/local/bin/mworker --api_endpoint ${MELOND_ENDPOINT} --port ${MWORKER_PORT}
 User=mworker
-Group=mworker
 Restart=always
 
 [Install]
@@ -153,3 +152,12 @@ You can check the status of the service with:
 ```
 sudo systemctl status mworker
 ```
+
+Finally, allow the worker to read from directories using ACLs:
+
+```bash
+sudo setfacl -R -m u:mworker:rx /home
+sudo setfacl -R -d -m u:mworker:rx /home
+```
+
+This will allow the `mworker` to read job files created by users.

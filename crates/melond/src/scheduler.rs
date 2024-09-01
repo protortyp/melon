@@ -17,37 +17,57 @@ use tokio::sync::{mpsc, Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tonic::Status;
-
 #[derive(Clone, Debug)]
 pub struct Scheduler {
-    /// Job counter
+    /// Atomic counter for generating unique job IDs
+    ///
+    /// Used to:
+    /// - Assign unique IDs to new jobs
+    /// - Ensure job IDs are monotonically increasing
+    /// - Initialized based on the highest job ID from the db
     job_ctr: Arc<AtomicU64>,
 
-    /// List of available worker nodes
+    /// Map of available worker nodes
+    ///
+    /// Key: Node ID
+    /// Value: Node information
     nodes: Arc<Mutex<HashMap<String, Node>>>,
 
-    /// Running jobs
+    /// Map of currently running jobs
+    ///
+    /// Key: Job ID
+    /// Value: Job information
     running_jobs: Arc<Mutex<HashMap<u64, Job>>>,
 
-    /// Pending jobs FIFO queue
+    /// Queue of pending jobs waiting to be assigned to workers
+    ///
+    /// Jobs are processed in FIFO order
     pending_jobs: Arc<Mutex<VecDeque<Job>>>,
 
-    /// Thread handler
+    /// Handle to the job scheduling thread for lifecycle management
+    ///
+    /// Used to:
+    /// - Keep track of the scheduling thread
+    /// - Gracefully shut down the scheduling mechanism
     handle: Option<Arc<Mutex<JoinHandle<()>>>>,
 
-    /// Thread notifier
+    /// Notifier to signal the scheduling thread to stop
     notifier: Arc<Notify>,
 
-    /// Thread handler
+    /// Handle to the node health check thread for lifecycle management
+    ///
+    /// Used to:
+    /// - Keep track of the health check thread
+    /// - Gracefully shut down the health check mechanism
     health_handle: Option<Arc<Mutex<JoinHandle<()>>>>,
 
-    /// Thread notifier
+    /// Notifier to signal the health check thread to stop
     health_notifier: Arc<Notify>,
 
-    /// Database Writer
+    /// Handler for database operations
     db: Arc<DatabaseHandler>,
 
-    /// Database Writer Sender
+    /// Channel sender for asynchronous database write operations
     db_tx: Arc<Sender<Job>>,
 }
 
@@ -255,14 +275,6 @@ impl Scheduler {
             }
         }
         None
-    }
-
-    #[tracing::instrument(level = "info", name = "Init job counter", skip(self))]
-    fn init_job_ctr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let ctr = self.db.get_highest_job_id()? + 1;
-        log!(debug, "Set job counter to {}", ctr);
-        self.job_ctr.store(ctr, std::sync::atomic::Ordering::SeqCst);
-        Ok(())
     }
 }
 

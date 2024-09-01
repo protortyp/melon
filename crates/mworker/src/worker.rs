@@ -2,11 +2,11 @@ use crate::arg::Args;
 use crate::core_mask::CoreMask;
 #[cfg(feature = "cgroups")]
 use cgroups::CGroups;
+use dashmap::DashMap;
 use melon_common::proto::melon_scheduler_client::MelonSchedulerClient;
 use melon_common::proto::melon_worker_server::{MelonWorker, MelonWorkerServer};
 use melon_common::proto::{self, NodeInfo, NodeResources};
 use melon_common::{log, JobResult, JobStatus};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -27,38 +27,61 @@ pub struct Worker {
     /// Internal server port
     port: u16,
 
-    /// Daemon endpoint
+    /// Endpoint of the master node/scheduler
     endpoint: String,
 
-    /// Connection Status
+    /// Current connection status to the master node
     status: ConnectionStatus,
 
-    /// Server thread notifier
+    /// Notifier to signal the server thread to shut down
     server_notifier: watch::Sender<()>,
 
-    /// Heartbeat thread handler
+    /// Handle to the heartbeat thread for lifecycle management
+    ///
+    /// Used to:
+    /// - Keep track of the heartbeat thread
+    /// - Gracefully shut down the heartbeat mechanism
     heartbeat_handle: Option<Arc<Mutex<JoinHandle<()>>>>,
 
-    /// Heartbeat thread notifier
+    /// Notifier to signal the heartbeat thread to stop
     heartbeat_notifier: Arc<Notify>,
 
-    /// Running jobs
-    running_jobs: Arc<Mutex<HashMap<u64, JoinHandle<JobResult>>>>,
+    /// Map of currently running jobs
+    ///
+    /// Key: Job ID
+    /// Value: Handle to the job's execution thread
+    running_jobs: Arc<DashMap<u64, JoinHandle<JobResult>>>,
 
-    /// Polling thread handler
+    /// Handle to the job polling thread for lifecycle management
+    ///
+    /// Used to:
+    /// - Keep track of the polling thread
+    /// - Gracefully shut down the polling mechanism
     polling_handle: Option<Arc<Mutex<JoinHandle<()>>>>,
 
-    /// Polling notifier
+    /// Notifier to signal the polling thread to stop
     polling_notifier: Arc<Notify>,
 
-    /// Deadline notifiers
-    deadline_notifiers: Arc<Mutex<HashMap<u64, mpsc::Sender<Duration>>>>,
+    /// Map of deadline extension notifiers for running jobs
+    ///
+    /// Key: Job ID
+    /// Value: Channel to send deadline extensions
+    deadline_notifiers: Arc<DashMap<u64, mpsc::Sender<Duration>>>,
 
-    /// Core Mask
+    /// CoreMask for managing CPU core allocation
+    ///
+    /// Represents the available CPU cores on the worker node.
+    /// It's used to:
+    /// - Allocate cores to new jobs
+    /// - Track which cores are in use
+    /// - Free cores when jobs complete
     core_mask: Arc<Mutex<CoreMask>>,
 
-    /// The Job core masks
-    job_masks: Arc<Mutex<HashMap<u64, u64>>>,
+    /// Map of job-specific core masks
+    ///
+    /// Key: Job ID
+    /// Value: Bitmask representing the cores allocated to the job
+    job_masks: Arc<DashMap<u64, u64>>,
 }
 
 impl Drop for Worker {
@@ -95,7 +118,7 @@ impl Worker {
 
         let total_cores = num_cpus::get(); // cpuset considers logical cores
         let core_mask = Arc::new(Mutex::new(CoreMask::new(total_cores as u32)));
-        let job_masks = Arc::new(Mutex::new(HashMap::new()));
+        let job_masks = Arc::new(DashMap::new());
 
         log!(info, "Set up worker with {} logical cores", total_cores);
 
@@ -107,10 +130,10 @@ impl Worker {
             heartbeat_handle: None,
             heartbeat_notifier: Arc::new(Notify::new()),
             server_notifier,
-            running_jobs: Arc::new(Mutex::new(HashMap::new())),
+            running_jobs: Arc::new(DashMap::new()),
             polling_handle: None,
             polling_notifier: Arc::new(Notify::new()),
-            deadline_notifiers: Arc::new(Mutex::new(HashMap::new())),
+            deadline_notifiers: Arc::new(DashMap::new()),
             core_mask,
             job_masks,
         })
@@ -157,18 +180,19 @@ impl Worker {
     #[tracing::instrument(level = "debug", name = "Poll jobs" skip(self))]
     async fn poll_jobs(&self) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = self.endpoint.clone();
-        let mut jobs = self.running_jobs.lock().await;
-
+        let jobs = self.running_jobs.clone();
         let mut completed_jobs = Vec::new();
-        for (job_id, handle) in jobs.iter_mut() {
+        for entry in jobs.iter_mut() {
+            let job_id = *entry.key();
+            let handle = entry.value();
             if handle.is_finished() {
                 log!(info, "JOB ID is finished {}", job_id);
-                completed_jobs.push(*job_id);
+                completed_jobs.push(job_id);
             }
         }
 
         for &job_id in &completed_jobs {
-            if let Some(handle) = jobs.remove(&job_id) {
+            if let Some((_, handle)) = jobs.remove(&job_id) {
                 match handle.await {
                     Ok(result) => {
                         log!(info, "Received job result {:?}", result);
@@ -180,7 +204,7 @@ impl Worker {
                         let _res = client.submit_job_result(request).await?;
                     }
                     Err(e) => {
-                        log!(error, "Something is wrong {}", e);
+                        log!(error, "Job execution failed: {}", e);
                         let status = JobStatus::Failed;
                         let result = JobResult::new(job_id, status);
                         let mut client = MelonSchedulerClient::connect(endpoint.clone()).await?;
@@ -193,9 +217,8 @@ impl Worker {
         }
 
         // remove the notifiers
-        let mut notifiers = self.deadline_notifiers.lock().await;
         for &job_id in &completed_jobs {
-            if notifiers.remove(&job_id).is_some() {
+            if self.deadline_notifiers.remove(&job_id).is_some() {
                 log!(info, "Remove deadline notifier for {}", job_id);
             }
         }
@@ -292,13 +315,21 @@ impl Worker {
         // spawn a new thread that works on the job
         let job_id = job.job_id;
         let (tx, mut rx) = mpsc::channel::<Duration>(10);
-        self.deadline_notifiers.lock().await.insert(job_id, tx);
+        self.deadline_notifiers.insert(job_id, tx);
         let initial_time_mins = job.req_res.expect("Could not get resources").time as u64;
-
         let pth = job.script_path.clone();
         let args = job.script_args.clone();
         let resources = job.req_res.unwrap();
         let cores_needed = resources.cpu_count;
+
+        log!(
+            info,
+            "Spawn script at: {}, args: {:?}, resources: {:?}, cores needed: {}",
+            pth,
+            args,
+            resources,
+            cores_needed
+        );
 
         let allocated_mask = {
             let mut core_mask = self.core_mask.lock().await;
@@ -308,10 +339,7 @@ impl Worker {
             })?
         };
         // store allocated mask
-        {
-            let mut job_masks = self.job_masks.lock().await;
-            job_masks.insert(job_id, allocated_mask);
-        }
+        self.job_masks.insert(job_id, allocated_mask);
 
         let core_mask = self.core_mask.clone();
         let job_masks = self.job_masks.clone();
@@ -329,7 +357,10 @@ impl Worker {
                 .spawn()
             {
                 Ok(child) => child,
-                Err(_) => return JobResult::new(job_id, JobStatus::Failed),
+                Err(e) => {
+                    log!(error, "Could not spawn command {}", e);
+                    return JobResult::new(job_id, JobStatus::Failed);
+                }
             };
 
             #[cfg(feature = "cgroups")]
@@ -394,11 +425,11 @@ impl Worker {
                             0
                         });
 
+
                         {
                             // free up core mask
-                            let mut core_mask = core_mask.lock().await;
-                            let mut job_masks = job_masks.lock().await;
-                            if let Some(mask) = job_masks.remove(&job_id) {
+                            if let Some((_, mask)) = job_masks.remove(&job_id) {
+                                let mut core_mask = core_mask.lock().await;
                                 core_mask.free(mask);
                             }
                         }
@@ -464,8 +495,7 @@ impl MelonWorker for Worker {
             .spawn_job(request.get_ref())
             .await
             .expect("Could not spawn job task");
-        let mut jobs = self.running_jobs.lock().await;
-        jobs.insert(request.get_ref().job_id, handle);
+        self.running_jobs.insert(request.get_ref().job_id, handle);
 
         let res = proto::WorkerJobResponse { ack: true };
         let res = tonic::Response::new(res);
@@ -479,18 +509,15 @@ impl MelonWorker for Worker {
     ) -> Result<tonic::Response<()>, tonic::Status> {
         let req = request.get_ref();
         let id = req.job_id;
-        let mut running_jobs = self.running_jobs.lock().await;
-        if let Some(handle) = running_jobs.get(&id) {
+        if let Some((_, handle)) = self.running_jobs.remove(&id) {
             // if job is not finished, cancel the job first
             if !handle.is_finished() {
                 handle.abort();
             }
-            running_jobs.remove(&id);
 
             // free the cores
             let mut core_mask = self.core_mask.lock().await;
-            let mut job_masks = self.job_masks.lock().await;
-            if let Some(mask) = job_masks.remove(&id) {
+            if let Some((_, mask)) = self.job_masks.remove(&id) {
                 core_mask.free(mask);
             }
             return Ok(tonic::Response::new(()));
@@ -498,7 +525,6 @@ impl MelonWorker for Worker {
 
         Err(tonic::Status::not_found("Not found!"))
     }
-
     #[tracing::instrument(level = "info", name = "Get job extension request" skip(self,request))]
     async fn extend_job(
         &self,
@@ -507,17 +533,19 @@ impl MelonWorker for Worker {
         let req = request.get_ref();
         let id = req.job_id;
         let time_in_mins = req.extension_mins;
-        let notifiers = self.deadline_notifiers.lock().await;
-        if let Some(tx) = notifiers.get(&id) {
+        if let Some(tx) = self.deadline_notifiers.get(&id) {
             match tx.send(Duration::from_secs(time_in_mins as u64 * 60)).await {
                 Ok(_) => {
-                    log!(error, "Successfully sent the request via channels");
-                    return Ok(tonic::Response::new(()));
+                    log!(info, "Successfully sent the job extension request");
+                    Ok(tonic::Response::new(()))
                 }
-                Err(e) => return Err(tonic::Status::unknown(format!("Unkown error {}", e))),
+                Err(e) => Err(tonic::Status::internal(format!(
+                    "Failed to send extension request: {}",
+                    e
+                ))),
             }
+        } else {
+            Err(tonic::Status::not_found("Job ID not found"))
         }
-
-        Err(tonic::Status::not_found("Job ID not found"))
     }
 }
