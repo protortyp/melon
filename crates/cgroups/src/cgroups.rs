@@ -65,15 +65,37 @@ impl CGroupsBuilder {
 
 pub struct CGroups {
     /// The cgroup name
-    pub name: String,
+    name: String,
     /// The allocated CPUs, eg. 0,1,4
-    pub cpus: Option<String>,
+    cpus: Option<String>,
     /// The memory in bytes
-    pub memory: Option<u64>,
+    memory: Option<u64>,
     /// The io limits
-    pub io: Option<String>,
+    io: Option<String>,
     /// Filesystem for testing
     fs: Box<dyn FileSystem>,
+}
+
+impl CGroups {
+    /// Get the cgroup name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the allocated CPUs
+    pub fn cpus(&self) -> Option<&str> {
+        self.cpus.as_deref()
+    }
+
+    /// Get the memory in bytes
+    pub fn memory(&self) -> Option<u64> {
+        self.memory
+    }
+
+    /// Get the io limits
+    pub fn io(&self) -> Option<&str> {
+        self.io.as_deref()
+    }
 }
 
 impl Drop for CGroups {

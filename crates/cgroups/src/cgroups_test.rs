@@ -104,11 +104,10 @@ mod tests {
             .with_io("8:0 rbps=1048576")
             .build()
             .unwrap();
-
-        assert_eq!(cgroup.name, "test_cgroup");
-        assert_eq!(cgroup.cpus, Some("0-1".to_string()));
-        assert_eq!(cgroup.memory, Some(1024 * 1024));
-        assert_eq!(cgroup.io, Some("8:0 rbps=1048576".to_string()));
+        assert_eq!(cgroup.name(), "test_cgroup");
+        assert_eq!(cgroup.cpus(), Some("0-1"));
+        assert_eq!(cgroup.memory(), Some(1024 * 1024));
+        assert_eq!(cgroup.io(), Some("8:0 rbps=1048576"));
     }
 
     #[test]
