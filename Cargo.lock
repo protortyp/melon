@@ -326,7 +326,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "cgroups"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "melon-common",
@@ -1160,7 +1160,7 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
 name = "mbatch"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "mcancel"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1188,7 +1188,7 @@ dependencies = [
 
 [[package]]
 name = "melon-common"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "config",
@@ -1206,7 +1206,7 @@ dependencies = [
 
 [[package]]
 name = "melond"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1240,7 +1240,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "mextend"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "mqueue"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "mshow"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1318,7 +1318,7 @@ checksum = "defc4c55412d89136f966bbb339008b474350e5e6e78d2714439c386b3137a03"
 
 [[package]]
 name = "mworker"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "cgroups",
