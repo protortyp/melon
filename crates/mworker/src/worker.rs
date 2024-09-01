@@ -27,37 +27,60 @@ pub struct Worker {
     /// Internal server port
     port: u16,
 
-    /// Daemon endpoint
+    /// Endpoint of the master node/scheduler
     endpoint: String,
 
-    /// Connection Status
+    /// Current connection status to the master node
     status: ConnectionStatus,
 
-    /// Server thread notifier
+    /// Notifier to signal the server thread to shut down
     server_notifier: watch::Sender<()>,
 
-    /// Heartbeat thread handler
+    /// Handle to the heartbeat thread for lifecycle management
+    ///
+    /// Used to:
+    /// - Keep track of the heartbeat thread
+    /// - Gracefully shut down the heartbeat mechanism
     heartbeat_handle: Option<Arc<Mutex<JoinHandle<()>>>>,
 
-    /// Heartbeat thread notifier
+    /// Notifier to signal the heartbeat thread to stop
     heartbeat_notifier: Arc<Notify>,
 
-    /// Running jobs
+    /// Map of currently running jobs
+    ///
+    /// Key: Job ID
+    /// Value: Handle to the job's execution thread
     running_jobs: Arc<DashMap<u64, JoinHandle<JobResult>>>,
 
-    /// Polling thread handler
+    /// Handle to the job polling thread for lifecycle management
+    ///
+    /// Used to:
+    /// - Keep track of the polling thread
+    /// - Gracefully shut down the polling mechanism
     polling_handle: Option<Arc<Mutex<JoinHandle<()>>>>,
 
-    /// Polling notifier
+    /// Notifier to signal the polling thread to stop
     polling_notifier: Arc<Notify>,
 
-    /// Deadline notifiers
+    /// Map of deadline extension notifiers for running jobs
+    ///
+    /// Key: Job ID
+    /// Value: Channel to send deadline extensions
     deadline_notifiers: Arc<DashMap<u64, mpsc::Sender<Duration>>>,
 
-    /// Core Mask
+    /// CoreMask for managing CPU core allocation
+    ///
+    /// Represents the available CPU cores on the worker node.
+    /// It's used to:
+    /// - Allocate cores to new jobs
+    /// - Track which cores are in use
+    /// - Free cores when jobs complete
     core_mask: Arc<Mutex<CoreMask>>,
 
-    /// The Job core masks
+    /// Map of job-specific core masks
+    ///
+    /// Key: Job ID
+    /// Value: Bitmask representing the cores allocated to the job
     job_masks: Arc<DashMap<u64, u64>>,
 }
 
