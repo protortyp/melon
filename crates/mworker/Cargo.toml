@@ -12,6 +12,7 @@ tracing = { workspace = true }
 tonic = { workspace = true }
 sysinfo = { workspace = true }
 num_cpus = { workspace = true }
+dashmap = { workspace = true }
 
 [[bin]]
 name = "mworker"
