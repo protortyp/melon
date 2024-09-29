@@ -3,8 +3,8 @@ use anyhow::Result;
 use melon_common::{
     configuration::get_configuration,
     proto::{
-        self, melon_scheduler_client::MelonSchedulerClient, Heartbeat, HeartbeatResponse, NodeInfo,
-        NodeResources, RegistrationResponse,
+        self, melon_scheduler_client::MelonSchedulerClient, Heartbeat, NodeInfo, NodeResources,
+        RegistrationResponse,
     },
 };
 use melond::{api::Api, application::Application, settings::Settings};
@@ -36,7 +36,7 @@ impl TestApp {
     pub async fn send_heartbeat(
         &self,
         node_id: String,
-    ) -> Result<Response<HeartbeatResponse>, Box<dyn std::error::Error>> {
+    ) -> Result<Response<()>, Box<dyn std::error::Error>> {
         let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
         let req = Heartbeat { node_id };
 
@@ -59,7 +59,7 @@ impl TestApp {
         &self,
     ) -> Result<tonic::Response<proto::JobListResponse>, Box<dyn std::error::Error>> {
         let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
-        let request = tonic::Request::new(proto::JobListRequest {});
+        let request = tonic::Request::new(());
         let response = client.list_jobs(request).await?;
         Ok(response)
     }
@@ -67,7 +67,7 @@ impl TestApp {
     pub async fn submit_job_result(
         &self,
         result: proto::JobResult,
-    ) -> Result<tonic::Response<proto::JobResultResponse>, Box<dyn std::error::Error>> {
+    ) -> Result<tonic::Response<()>, Box<dyn std::error::Error>> {
         let mut client = MelonSchedulerClient::connect(self.address.clone().to_string()).await?;
         let request = tonic::Request::new(result);
         let response = client.submit_job_result(request).await?;

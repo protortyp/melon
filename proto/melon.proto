@@ -7,16 +7,16 @@ package melon;
 service MelonScheduler {
   rpc SubmitJob (JobSubmission) returns (MasterJobResponse) {}
   rpc RegisterNode (NodeInfo) returns (RegistrationResponse) {}
-  rpc SendHeartbeat (Heartbeat) returns (HeartbeatResponse) {}
-  rpc SubmitJobResult (JobResult) returns (JobResultResponse) {}
-  rpc ListJobs (JobListRequest) returns (JobListResponse) {}
+  rpc SendHeartbeat (Heartbeat) returns (google.protobuf.Empty) {}
+  rpc SubmitJobResult (JobResult) returns (google.protobuf.Empty) {}
+  rpc ListJobs (google.protobuf.Empty) returns (JobListResponse) {}
   rpc CancelJob (CancelJobRequest) returns (google.protobuf.Empty) {}
   rpc ExtendJob (ExtendJobRequest) returns (google.protobuf.Empty) {}
   rpc GetJobInfo (GetJobInfoRequest) returns (Job) {}
 }
 
 service MelonWorker {
-  rpc AssignJob (JobAssignment) returns (WorkerJobResponse) {}
+  rpc AssignJob (JobAssignment) returns (google.protobuf.Empty) {}
   rpc CancelJob (CancelJobRequest) returns (google.protobuf.Empty) {}
   rpc ExtendJob (ExtendJobRequest) returns (google.protobuf.Empty) {}
 }
@@ -41,11 +41,6 @@ message MasterJobResponse {
   uint64 job_id = 1;
 }
 
-// returned by a worker node upon receive
-message WorkerJobResponse {
-  bool ack = 1;
-}
-
 message NodeInfo {
   string address = 1;
   NodeResources resources = 2;
@@ -64,10 +59,6 @@ message Heartbeat {
   string node_id = 1;
 }
 
-message HeartbeatResponse {
-  bool ack = 1;
-}
-
 message JobResult {
   uint64 job_id = 1;
   JobStatus status = 2;
@@ -79,13 +70,6 @@ enum JobStatus {
   PENDING = 2;
   RUNNING = 3;
   TIMEOUT = 4;
-}
-
-message JobResultResponse {
-  bool ack = 1;
-}
-
-message JobListRequest {
 }
 
 message JobListResponse {

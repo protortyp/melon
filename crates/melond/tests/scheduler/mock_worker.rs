@@ -36,15 +36,14 @@ impl MelonWorker for MockWorker {
     async fn assign_job(
         &self,
         request: tonic::Request<proto::JobAssignment>,
-    ) -> Result<tonic::Response<proto::WorkerJobResponse>, tonic::Status> {
+    ) -> Result<tonic::Response<()>, tonic::Status> {
         let job_assignment = request.into_inner();
         self.job_assignment_sender
             .send(job_assignment)
             .await
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
 
-        let res = proto::WorkerJobResponse { ack: true };
-        Ok(tonic::Response::new(res))
+        Ok(tonic::Response::new(()))
     }
 
     async fn cancel_job(

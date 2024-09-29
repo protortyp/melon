@@ -1,5 +1,4 @@
-use crate::{scheduler::Scheduler, settings::Settings};
-use anyhow::{Context, Result};
+use crate::{Result, Scheduler, Settings};
 use melon_common::{log, proto::melon_scheduler_server::MelonSchedulerServer};
 use tokio::net::TcpListener;
 use tonic::transport::{server::Router, Server};
@@ -18,7 +17,7 @@ pub struct Application {
 
 impl Application {
     #[tracing::instrument(level = "info", name = "Build Application")]
-    pub async fn build(settings: Settings) -> Result<Self, anyhow::Error> {
+    pub async fn build(settings: Settings) -> Result<Self> {
         let addr = format!(
             "{}:{}",
             settings.application.host, settings.application.port
@@ -33,15 +32,8 @@ impl Application {
             port
         );
         let mut scheduler = Scheduler::new(&settings);
-        scheduler
-            .start()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to start scheduler: {}", e))?;
-        scheduler
-            .start_health_polling()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to start health polling: {}", e))?;
-
+        scheduler.start().await?;
+        scheduler.start_health_polling().await?;
         let server = Server::builder().add_service(MelonSchedulerServer::new(scheduler));
 
         Ok(Self {
@@ -57,8 +49,7 @@ impl Application {
             .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
                 self.listener,
             ))
-            .await
-            .context("Server error")?;
+            .await?;
         Ok(())
     }
 

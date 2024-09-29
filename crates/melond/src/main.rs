@@ -1,13 +1,13 @@
-use anyhow::Result;
 use melon_common::{
     configuration::get_configuration,
     log,
     telemetry::{get_subscriber, init_subscriber},
 };
-use melond::{api::Api, application::Application, db::get_prod_database_path, settings::Settings};
+use melond::{db::get_prod_database_path, Api, Settings};
+use melond::{Application, Result};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     let mut settings: Settings = get_configuration().expect("Failed to read configuration.");
     if settings.database.path.is_empty() {
         settings.database.path = get_prod_database_path();
@@ -16,10 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let subscriber = get_subscriber("melond".into(), "info".into(), std::io::stdout);
     init_subscriber(subscriber);
 
-    let application = Application::build(settings.clone()).await.map_err(|e| {
-        log!(info, "Failed to build application: {}", e);
-        std::io::Error::new(std::io::ErrorKind::Other, "Failed to build application.")
-    })?;
+    let application = Application::build(settings.clone()).await?;
 
     #[cfg(feature = "api")]
     {
