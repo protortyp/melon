@@ -279,8 +279,7 @@ impl Worker {
         let node_id = self.id.clone().unwrap();
         let req = proto::Heartbeat { node_id };
         let req = tonic::Request::new(req);
-        let res = client.send_heartbeat(req).await?;
-        let _ = res.get_ref().ack;
+        let _ = client.send_heartbeat(req).await?;
         Ok(())
     }
 
@@ -490,15 +489,14 @@ impl MelonWorker for Worker {
     async fn assign_job(
         &self,
         request: tonic::Request<proto::JobAssignment>,
-    ) -> Result<tonic::Response<proto::WorkerJobResponse>, tonic::Status> {
+    ) -> Result<tonic::Response<()>, tonic::Status> {
         let handle = self
             .spawn_job(request.get_ref())
             .await
             .expect("Could not spawn job task");
         self.running_jobs.insert(request.get_ref().job_id, handle);
 
-        let res = proto::WorkerJobResponse { ack: true };
-        let res = tonic::Response::new(res);
+        let res = tonic::Response::new(());
         Ok(res)
     }
 

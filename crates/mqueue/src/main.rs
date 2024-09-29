@@ -3,10 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use arg::Args;
 use clap::Parser;
-use melon_common::{
-    proto::{self, melon_scheduler_client::MelonSchedulerClient},
-    Job, JobStatus,
-};
+use melon_common::{proto::melon_scheduler_client::MelonSchedulerClient, Job, JobStatus};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,8 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let endpoint = format!("http://{}", args.api_endpoint);
 
     let mut client = MelonSchedulerClient::connect(endpoint.clone()).await?;
-    let req = proto::JobListRequest {};
-    let request = tonic::Request::new(req);
+    let request = tonic::Request::new(());
     let res = client.list_jobs(request).await?;
     let jobs = res.get_ref();
 

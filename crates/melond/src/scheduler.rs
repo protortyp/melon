@@ -1,4 +1,5 @@
 use crate::db::DatabaseHandler;
+use crate::error::Result;
 use crate::settings::Settings;
 use melon_common::proto::melon_scheduler_server::MelonScheduler;
 use melon_common::proto::melon_worker_client::MelonWorkerClient;
@@ -17,6 +18,7 @@ use tokio::sync::{mpsc, Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tonic::Status;
+
 #[derive(Clone, Debug)]
 pub struct Scheduler {
     /// Atomic counter for generating unique job IDs
@@ -126,7 +128,7 @@ impl Scheduler {
     /// and assigns them to available workers. This function ensures efficient job
     /// distribution by continuously monitoring the job queue and worker availability.
     #[tracing::instrument(level = "debug", name = "Start up scheduler", skip(self))]
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(&mut self) -> Result<()> {
         let scheduler = self.clone();
         let notifier = self.notifier.clone();
 
@@ -135,7 +137,7 @@ impl Scheduler {
             let _guard = span.enter();
 
             // FIXME: hardocded timer
-            let mut interval = interval(Duration::from_secs(5));
+            let mut interval = interval(Duration::from_millis(250));
 
             loop {
                 tokio::select! {
@@ -198,7 +200,7 @@ impl Scheduler {
     }
 
     #[tracing::instrument(level = "debug", name = "Start health polling", skip(self))]
-    pub async fn start_health_polling(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start_health_polling(&mut self) -> Result<()> {
         let scheduler = self.clone();
         let notifier = self.health_notifier.clone();
 
@@ -228,7 +230,7 @@ impl Scheduler {
     /// Checks the health status of all registered compute nodes.
     /// Marks nodes as offline if they haven't sent a heartbeat in the last 60 seconds.
     #[tracing::instrument(level = "debug", name = "Poll node health", skip(self))]
-    async fn poll_node_health(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn poll_node_health(&self) -> Result<()> {
         // regularly check which compute nodes have not called back in a while
         // mark those nodes as unavailable
         let mut nodes = self.nodes.lock().await;
@@ -284,7 +286,7 @@ impl MelonScheduler for Scheduler {
     async fn submit_job(
         &self,
         request: tonic::Request<proto::JobSubmission>,
-    ) -> Result<tonic::Response<proto::MasterJobResponse>, tonic::Status> {
+    ) -> core::result::Result<tonic::Response<proto::MasterJobResponse>, tonic::Status> {
         log!(debug, "get job sub request");
         let sub = request.get_ref();
 
@@ -318,7 +320,7 @@ impl MelonScheduler for Scheduler {
     async fn register_node(
         &self,
         request: tonic::Request<proto::NodeInfo>,
-    ) -> Result<tonic::Response<proto::RegistrationResponse>, tonic::Status> {
+    ) -> core::result::Result<tonic::Response<proto::RegistrationResponse>, tonic::Status> {
         let req = request.get_ref();
         let resources = req.resources.unwrap();
         let resources = melon_common::NodeResources::new(resources.cpu_count, resources.memory);
@@ -345,7 +347,7 @@ impl MelonScheduler for Scheduler {
     async fn send_heartbeat(
         &self,
         request: tonic::Request<proto::Heartbeat>,
-    ) -> Result<tonic::Response<proto::HeartbeatResponse>, tonic::Status> {
+    ) -> core::result::Result<tonic::Response<()>, tonic::Status> {
         let mut nodes = self.nodes.lock().await;
         let node_id = &request.get_ref().node_id;
 
@@ -361,8 +363,7 @@ impl MelonScheduler for Scheduler {
             }
         }
 
-        let res = proto::HeartbeatResponse { ack: true };
-        let res = tonic::Response::new(res);
+        let res = tonic::Response::new(());
         Ok(res)
     }
 
@@ -370,7 +371,7 @@ impl MelonScheduler for Scheduler {
     async fn submit_job_result(
         &self,
         request: tonic::Request<proto::JobResult>,
-    ) -> Result<tonic::Response<proto::JobResultResponse>, tonic::Status> {
+    ) -> core::result::Result<tonic::Response<()>, tonic::Status> {
         let req = request.get_ref();
         let result: JobResult = req.into();
 
@@ -404,9 +405,7 @@ impl MelonScheduler for Scheduler {
             }
 
             // ack
-            let res = proto::JobResultResponse { ack: true };
-            let res = tonic::Response::new(res);
-
+            let res = tonic::Response::new(());
             Ok(res)
         } else {
             Err(tonic::Status::not_found("Job not found"))
@@ -416,8 +415,8 @@ impl MelonScheduler for Scheduler {
     #[tracing::instrument(level = "debug", name = "List all jobs", skip(self, _request))]
     async fn list_jobs(
         &self,
-        _request: tonic::Request<proto::JobListRequest>,
-    ) -> Result<tonic::Response<proto::JobListResponse>, tonic::Status> {
+        _request: tonic::Request<()>,
+    ) -> core::result::Result<tonic::Response<proto::JobListResponse>, tonic::Status> {
         let pending_jobs = self.pending_jobs.lock().await;
         let running_jobs = self.running_jobs.lock().await;
 
@@ -450,7 +449,7 @@ impl MelonScheduler for Scheduler {
     async fn cancel_job(
         &self,
         request: tonic::Request<proto::CancelJobRequest>,
-    ) -> Result<tonic::Response<()>, tonic::Status> {
+    ) -> core::result::Result<tonic::Response<()>, tonic::Status> {
         let req = request.get_ref();
         let id = req.job_id;
         let user = req.user.clone();
@@ -513,7 +512,7 @@ impl MelonScheduler for Scheduler {
     async fn extend_job(
         &self,
         request: tonic::Request<proto::ExtendJobRequest>,
-    ) -> Result<tonic::Response<()>, tonic::Status> {
+    ) -> core::result::Result<tonic::Response<()>, tonic::Status> {
         let req = request.get_ref();
         let id = req.job_id;
         let user = req.user.clone();
@@ -576,7 +575,7 @@ impl MelonScheduler for Scheduler {
     async fn get_job_info(
         &self,
         request: tonic::Request<proto::GetJobInfoRequest>,
-    ) -> Result<tonic::Response<proto::Job>, tonic::Status> {
+    ) -> core::result::Result<tonic::Response<proto::Job>, tonic::Status> {
         let req = request.get_ref();
         let id = req.job_id;
 

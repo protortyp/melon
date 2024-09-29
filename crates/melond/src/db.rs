@@ -1,6 +1,7 @@
+use crate::error::Result;
 use directories::ProjectDirs;
 use melon_common::{log, Job, JobStatus, RequestedResources};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, Result as SqliteResult};
 use serde_json;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,10 +33,7 @@ pub struct DatabaseHandler {
 
 impl DatabaseHandler {
     #[tracing::instrument(level = "debug", name = "Create new DatabaseWriter", skip(rx))]
-    pub fn new(
-        rx: mpsc::Receiver<Job>,
-        settings: &DatabaseSettings,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(rx: mpsc::Receiver<Job>, settings: &DatabaseSettings) -> Result<Self> {
         Ok(Self {
             rx: Arc::new(Mutex::new(rx)),
             notifier: Arc::new(Notify::new()),
@@ -50,7 +48,7 @@ impl DatabaseHandler {
     }
 
     #[tracing::instrument(level = "debug", name = "Create DatabaseWriter thread", skip(self))]
-    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run(&mut self) -> Result<()> {
         let notifier = self.notifier.clone();
         let rx = self.rx.clone();
         let conn = initialize_database(&self.db_path)?;
@@ -86,7 +84,7 @@ impl DatabaseHandler {
     }
 
     #[tracing::instrument(level = "debug", name = "Get job from database", skip(self), fields(job_id = %job_id))]
-    pub fn get_job_opt(&self, job_id: u64) -> Result<Option<Job>, Box<dyn std::error::Error>> {
+    pub fn get_job_opt(&self, job_id: u64) -> Result<Option<Job>> {
         let conn = Connection::open(self.db_path.clone())?;
 
         let mut stmt = conn.prepare("SELECT * FROM jobs WHERE id = ?")?;
@@ -112,7 +110,7 @@ impl DatabaseHandler {
         Ok(job_iter.next().transpose()?)
     }
 
-    pub fn get_highest_job_id(&self) -> Result<u64, Box<dyn std::error::Error>> {
+    pub fn get_highest_job_id(&self) -> Result<u64> {
         let conn = Connection::open(self.db_path.clone())?;
 
         let mut stmt = conn.prepare("SELECT MAX(id) FROM jobs")?;
@@ -122,7 +120,7 @@ impl DatabaseHandler {
     }
 
     #[tracing::instrument(level = "debug", name = "Get all jobs from database", skip(self))]
-    pub fn get_all_jobs(&self) -> Result<Vec<Job>, Box<dyn std::error::Error>> {
+    pub fn get_all_jobs(&self) -> Result<Vec<Job>> {
         let conn = Connection::open(self.db_path.clone())?;
 
         let mut stmt = conn.prepare("SELECT * FROM jobs")?;
@@ -145,13 +143,13 @@ impl DatabaseHandler {
             })
         })?;
 
-        let jobs: Result<Vec<Job>, _> = job_iter.collect();
+        let jobs: SqliteResult<Vec<Job>> = job_iter.collect();
         Ok(jobs?)
     }
 }
 
 #[tracing::instrument(level = "debug", name = "Insert finished job", skip(conn, job), fields(job_id = %job.id))]
-fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::error::Error>> {
+fn insert_finished_job(conn: &Connection, job: &Job) -> Result<()> {
     let script_args = serde_json::to_string(&job.script_args)?;
     let status: i32 = job.status.clone().into();
 
@@ -179,7 +177,7 @@ fn insert_finished_job(conn: &Connection, job: &Job) -> Result<(), Box<dyn std::
 }
 
 #[tracing::instrument(level = "debug", name = "Initialise database")]
-fn initialize_database(db_path: &str) -> Result<Connection, Box<dyn std::error::Error>> {
+fn initialize_database(db_path: &str) -> Result<Connection> {
     let db_path = PathBuf::from(db_path);
 
     if let Some(parent) = db_path.parent() {

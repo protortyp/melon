@@ -82,7 +82,7 @@ async fn get_jobs(
         MelonSchedulerClient::connect(format!("http://[::1]:{}", settings.application.port))
             .await?;
 
-    let request = tonic::Request::new(melon_common::proto::JobListRequest {});
+    let request = tonic::Request::new(());
     let response = client.list_jobs(request).await?;
 
     let jobs = response.into_inner().jobs;
