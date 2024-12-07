@@ -66,8 +66,8 @@ impl Job {
         }
     }
 
-    pub fn extend_time(&mut self, extenion_in_mins: u32) {
-        self.req_res.time += extenion_in_mins;
+    pub fn extend_time(&mut self, extension_in_mins: u32) {
+        self.req_res.time += extension_in_mins;
     }
 }
 
