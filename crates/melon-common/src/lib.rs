@@ -368,3 +368,47 @@ impl From<&proto::JobResult> for JobResult {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn job_conversion_roundtrip(id in 0u64.., user in ".*", script_path in ".*",
+            script_args in proptest::collection::vec(".*", 0..10),
+            cpu_count in 1u32..16, memory in 0u64..(1 << 30), time in 0u32..) {
+            let req_res = RequestedResources::new(cpu_count, memory, time);
+            let job = Job::new(id, user, script_path, script_args, req_res);
+
+            let proto_job: proto::Job = (&job).into();
+            let converted_job: Job = (&proto_job).into();
+
+            assert_eq!(job.id, converted_job.id);
+            assert_eq!(job.user, converted_job.user);
+            assert_eq!(job.script_path, converted_job.script_path);
+            assert_eq!(job.script_args, converted_job.script_args);
+            assert_eq!(job.req_res.cpu_count, converted_job.req_res.cpu_count);
+            assert_eq!(job.req_res.memory, converted_job.req_res.memory);
+            assert_eq!(job.req_res.time, converted_job.req_res.time);
+        }
+
+        #[test]
+        fn resource_reduction_and_free(cpu_count in 1u32..16, memory in 0u64..(1 << 30), time in 0u32..) {
+            let mut node = Node::new("node-1".to_string(), "127.0.0.1".to_string(),
+            NodeResources::new(cpu_count, memory), NodeStatus::Available);
+
+            let req_res = RequestedResources::new(cpu_count / 2, memory / 2, time);
+            node.reduce_avail_resources(&req_res);
+
+            assert!(node.used_resources.cpu_count <= node.avail_resources.cpu_count);
+            assert!(node.used_resources.memory <= node.avail_resources.memory);
+
+            node.free_avail_resource(&req_res);
+
+            assert_eq!(node.used_resources.cpu_count, 0);
+            assert_eq!(node.used_resources.memory, 0);
+        }
+    }
+}
